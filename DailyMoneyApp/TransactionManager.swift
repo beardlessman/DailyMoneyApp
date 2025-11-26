@@ -185,8 +185,15 @@ class TransactionManager: ObservableObject {
     func getMonthString() -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "ru_RU")
-        formatter.dateFormat = "LLLL yyyy"
+        formatter.dateFormat = "LLLL"
         return formatter.string(from: Date()).capitalized
+    }
+    
+    func getMonthSpentAmount() -> Double {
+        let monthTransactions = getTransactionsForCurrentMonth()
+        return monthTransactions.reduce(0.0) { total, transaction in
+            total + (Double(transaction.amount) ?? 0.0)
+        }
     }
     
     func getFormattedLog() -> String {
@@ -252,6 +259,31 @@ class TransactionManager: ObservableObject {
         return todayTransactions.reduce(0.0) { total, transaction in
             total + (Double(transaction.amount) ?? 0.0)
         }
+    }
+    
+    func getFormattedLogForDate(_ date: Date) -> String {
+        let calendar = Calendar.current
+        let dayStart = calendar.startOfDay(for: date)
+        
+        let dayTransactions = transactions.filter { transaction in
+            calendar.startOfDay(for: transaction.date) == dayStart
+        }.sorted { $0.date > $1.date }
+        
+        guard !dayTransactions.isEmpty else {
+            return ""
+        }
+        
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.dateFormat = "dd.MM.yy"
+        let dateString = formatter.string(from: date)
+        
+        var result = "\(dateString)\n"
+        for transaction in dayTransactions {
+            result += "\(transaction.amount) \(transaction.formattedCategory)\n"
+        }
+        
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

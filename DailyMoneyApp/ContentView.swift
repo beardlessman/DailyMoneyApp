@@ -14,7 +14,7 @@ struct ContentView: View {
     @FocusState private var isCommentFocused: Bool
     @State private var toasts: [Toast] = []
     
-    let categorySuggestions = ["Продукты", "Доставка", "Алкоголь", "Кальян"]
+    let categorySuggestions = ["Продукты", "Доставка", "Алкоголь", "Кальян", "Транспорт", "Платежи", "Для дома", "Здоровье", "Кофе"]
     private let AMOUNT: Double = 4000.0
     
     private var availableAmount: Double {
@@ -154,7 +154,7 @@ struct ContentView: View {
 
                 Spacer()
             }
-            .padding(.top, 170)
+            .padding(.top, 100)
             .onAppear {
                 if navigationManager.selectedTab == 0 {
                     isAmountFocused = true

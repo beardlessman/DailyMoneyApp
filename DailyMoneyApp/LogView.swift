@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct LogView: View {
     @EnvironmentObject var navigationManager: NavigationManager
@@ -40,10 +41,21 @@ struct LogView: View {
                             Text(transactionManager.getMonthString())
                                 .font(.title2)
                                 .fontWeight(.bold)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 10)
+                            Spacer()
+                            Text("\(Int(transactionManager.getMonthSpentAmount())) RSD")
+                                .font(.title3)
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.top, 20)
-                        .padding(.bottom, 10)
+                        .contextMenu {
+                            Button(action: {
+                                let logText = transactionManager.getFormattedLog()
+                                UIPasteboard.general.string = logText
+                            }) {
+                                Label("Копировать лог за месяц", systemImage: "doc.on.doc")
+                            }
+                        }
+                        
                         
                         // Список дней (уже отсортированы в обратном порядке)
                         ForEach(daysInMonth, id: \.self) { date in
@@ -158,7 +170,15 @@ struct DayView: View {
             Text(dateString)
                 .font(.headline)
                 .padding(.horizontal, 8)
-                .padding(.top, 16)
+                .padding(.vertical, 4)
+                .contextMenu {
+                    Button(action: {
+                        let logText = transactionManager.getFormattedLogForDate(date)
+                        UIPasteboard.general.string = logText
+                    }) {
+                        Label("Копировать лог за день", systemImage: "doc.on.doc")
+                    }
+                }
             
             if let dayTransactions = grouped[dayStart], !dayTransactions.isEmpty {
                 ForEach(dayTransactions) { transaction in
