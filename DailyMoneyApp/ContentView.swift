@@ -7,6 +7,7 @@ struct Toast: Identifiable {
 
 struct ContentView: View {
     @EnvironmentObject var navigationManager: NavigationManager
+    @EnvironmentObject var transactionManager: TransactionManager
     @State private var amount: String = ""
     @State private var comment: String = "Продукты"
     @FocusState private var isAmountFocused: Bool
@@ -18,6 +19,9 @@ struct ContentView: View {
     private func submitForm() {
         // Если категория не выбрана, подставляем "что-то"
         let categoryText = comment.isEmpty ? "что-то" : comment
+        
+        // Сохраняем транзакцию
+        transactionManager.addTransaction(amount: amount, category: categoryText)
         
         // Формируем сообщение и добавляем тост
         let toast = Toast(message: "\(amount) \(categoryText)")
@@ -128,7 +132,21 @@ struct ContentView: View {
             }
             .padding(.top, 213)
             .onAppear {
-                isAmountFocused = true
+                if navigationManager.selectedTab == 0 {
+                    isAmountFocused = true
+                }
+            }
+            .onChange(of: navigationManager.selectedTab) { newValue in
+                if newValue == 0 {
+                    // Возврат на экран формы - ставим фокус
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        isAmountFocused = true
+                    }
+                } else {
+                    // Переход в лог - убираем фокус
+                    isAmountFocused = false
+                    isCommentFocused = false
+                }
             }
             
             // Всплывающие сообщения сверху в стопке
@@ -154,6 +172,9 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: {
+                        // Убираем фокус перед переходом
+                        isAmountFocused = false
+                        isCommentFocused = false
                         navigationManager.switchToLog()
                     }) {
                         Image(systemName: "list.bullet")
