@@ -240,5 +240,18 @@ class TransactionManager: ObservableObject {
         transactions = []
         saveTransactions()
     }
+    
+    func getTodaySpentAmount() -> Double {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        
+        let todayTransactions = transactions.filter { transaction in
+            calendar.startOfDay(for: transaction.date) == today
+        }
+        
+        return todayTransactions.reduce(0.0) { total, transaction in
+            total + (Double(transaction.amount) ?? 0.0)
+        }
+    }
 }
 

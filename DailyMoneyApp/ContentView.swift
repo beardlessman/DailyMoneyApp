@@ -15,6 +15,22 @@ struct ContentView: View {
     @State private var toasts: [Toast] = []
     
     let categorySuggestions = ["Продукты", "Доставка", "Алкоголь", "Кальян"]
+    private let AMOUNT: Double = 4000.0
+    
+    private var availableAmount: Double {
+        AMOUNT - transactionManager.getTodaySpentAmount()
+    }
+    
+    private var amountColor: Color {
+        let halfAmount = AMOUNT / 2.0
+        if availableAmount > halfAmount {
+            return .green
+        } else if availableAmount < 0 {
+            return .red
+        } else {
+            return .black
+        }
+    }
     
     private func submitForm() {
         // Если категория не выбрана, подставляем "что-то"
@@ -46,6 +62,14 @@ struct ContentView: View {
         NavigationView {
             ZStack {
                 VStack(spacing: 24) {
+                    // Отображение доступной суммы
+                    Text("\(Int(availableAmount)) RSD")
+                        .font(.system(size: 30, weight: .bold))
+                        .foregroundColor(amountColor)
+                        .frame(maxWidth: .infinity)
+                        .multilineTextAlignment(.center)
+                        .padding(.bottom, 8)
+                    
                 ZStack(alignment: .trailing) {
                     TextField("Сумма", text: $amount)
                         .keyboardType(.numberPad)
