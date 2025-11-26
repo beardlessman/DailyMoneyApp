@@ -6,6 +6,7 @@ struct Toast: Identifiable {
 }
 
 struct ContentView: View {
+    @EnvironmentObject var navigationManager: NavigationManager
     @State private var amount: String = ""
     @State private var comment: String = "Продукты"
     @FocusState private var isAmountFocused: Bool
@@ -38,8 +39,9 @@ struct ContentView: View {
     }
 
     var body: some View {
-        ZStack {
-            VStack(spacing: 24) {
+        NavigationView {
+            ZStack {
+                VStack(spacing: 24) {
                 ZStack(alignment: .trailing) {
                     TextField("Сумма", text: $amount)
                         .keyboardType(.numberPad)
@@ -146,6 +148,18 @@ struct ContentView: View {
                     Spacer()
                 }
                 .padding(.top, 50)
+            }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(action: {
+                        navigationManager.switchToLog()
+                    }) {
+                        Image(systemName: "list.bullet")
+                            .foregroundColor(.blue)
+                    }
+                }
             }
         }
     }
