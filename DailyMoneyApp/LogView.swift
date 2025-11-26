@@ -3,7 +3,8 @@ import SwiftUI
 struct LogView: View {
     @EnvironmentObject var navigationManager: NavigationManager
     @EnvironmentObject var transactionManager: TransactionManager
-    @State private var showCopyAlert = false
+    @State private var showShareSheet = false
+    @State private var showClearConfirmation = false
     
     private var groupedTransactions: [Date: [Transaction]] {
         transactionManager.getGroupedTransactions()
@@ -19,36 +20,35 @@ struct LogView: View {
     
     private var daysInMonth: [Date] {
         let today = Calendar.current.startOfDay(for: Date())
-        let allDays = getDaysInMonth(start: monthRange.start, end: monthRange.end)
-        return allDays.filter { Calendar.current.startOfDay(for: $0) <= today }
+        // Показываем только дни с транзакциями
+        return groupedTransactions.keys.filter { dayStart in
+            dayStart <= today && !groupedTransactions[dayStart]!.isEmpty
+        }.sorted(by: >)
+    }
+    
+    private var hasTransactions: Bool {
+        !daysInMonth.isEmpty
     }
     
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    // Заголовок месяца с кнопкой копирования
-                    HStack {
-                        Button(action: {
-                            copyLogToClipboard()
-                            showCopyAlert = true
-                        }) {
-                            Image(systemName: "doc.on.doc")
-                                .foregroundColor(.blue)
-                                .font(.title3)
+                    // Заголовок месяца (только если есть транзакции)
+                    if hasTransactions {
+                        HStack {
+                            Text(transactionManager.getMonthString())
+                                .font(.title2)
+                                .fontWeight(.bold)
                         }
+                        .padding(.horizontal, 8)
+                        .padding(.top, 20)
+                        .padding(.bottom, 10)
                         
-                        Text(transactionManager.getMonthString())
-                            .font(.title2)
-                            .fontWeight(.bold)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.top, 20)
-                    .padding(.bottom, 10)
-                    
-                    // Список дней
-                    ForEach(daysInMonth.reversed(), id: \.self) { date in
-                        DayView(date: date, grouped: groupedTransactions)
+                        // Список дней (уже отсортированы в обратном порядке)
+                        ForEach(daysInMonth, id: \.self) { date in
+                            DayView(date: date, grouped: groupedTransactions)
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -58,6 +58,27 @@ struct LogView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Menu {
+                        Button(action: {
+                            // Сохраняем файл перед экспортом
+                            transactionManager.saveTransactions()
+                            showShareSheet = true
+                        }) {
+                            Label("Экспортировать лог", systemImage: "square.and.arrow.up")
+                        }
+                        
+                        Button(role: .destructive, action: {
+                            showClearConfirmation = true
+                        }) {
+                            Label("Очистить лог", systemImage: "trash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .foregroundColor(.blue)
+                    }
+                }
+                
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
                         navigationManager.switchToAdd()
@@ -67,8 +88,20 @@ struct LogView: View {
                     }
                 }
             }
-            .alert("Лог скопирован", isPresented: $showCopyAlert) {
-                Button("OK", role: .cancel) { }
+            .alert("Очистить весь лог?", isPresented: $showClearConfirmation) {
+                Button("Отмена", role: .cancel) { }
+                Button("Очистить", role: .destructive) {
+                    transactionManager.clearAllTransactions()
+                }
+            } message: {
+                Text("Все транзакции будут удалены. Это действие нельзя отменить.")
+            }
+            .sheet(isPresented: $showShareSheet) {
+                ShareSheet(activityItems: [transactionManager.getLogFileURL()])
+            }
+            .onAppear {
+                // Перезагружаем данные при появлении экрана (на случай ручного редактирования)
+                transactionManager.reloadFromFile()
             }
         }
     }
@@ -85,10 +118,22 @@ struct LogView: View {
         
         return days
     }
+}
+
+// Share Sheet для экспорта файла
+struct ShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
     
-    private func copyLogToClipboard() {
-        let logText = transactionManager.getFormattedLog()
-        UIPasteboard.general.string = logText
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(
+            activityItems: activityItems,
+            applicationActivities: nil
+        )
+        return controller
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
+        // Ничего не делаем
     }
 }
 
