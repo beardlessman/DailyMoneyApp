@@ -130,7 +130,7 @@ struct ContentView: View {
 
                 Spacer()
             }
-            .padding(.top, 213)
+            .padding(.top, 170)
             .onAppear {
                 if navigationManager.selectedTab == 0 {
                     isAmountFocused = true

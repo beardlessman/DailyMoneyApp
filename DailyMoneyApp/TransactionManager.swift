@@ -54,6 +54,11 @@ class TransactionManager: ObservableObject {
             grouped[dayStart]?.append(transaction)
         }
         
+        // Сортируем транзакции внутри каждого дня по дате (новые сверху)
+        for (day, transactions) in grouped {
+            grouped[day] = transactions.sorted { $0.date > $1.date }
+        }
+        
         return grouped
     }
     
