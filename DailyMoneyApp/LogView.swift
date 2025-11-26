@@ -47,7 +47,7 @@ struct LogView: View {
                         
                         // Список дней (уже отсортированы в обратном порядке)
                         ForEach(daysInMonth, id: \.self) { date in
-                            DayView(date: date, grouped: groupedTransactions)
+                            DayView(date: date, grouped: groupedTransactions, transactionManager: transactionManager)
                         }
                     }
                 }
@@ -140,6 +140,7 @@ struct ShareSheet: UIViewControllerRepresentable {
 struct DayView: View {
     let date: Date
     let grouped: [Date: [Transaction]]
+    @ObservedObject var transactionManager: TransactionManager
     
     private var dayStart: Date {
         Calendar.current.startOfDay(for: date)
@@ -161,9 +162,19 @@ struct DayView: View {
             
             if let dayTransactions = grouped[dayStart], !dayTransactions.isEmpty {
                 ForEach(dayTransactions) { transaction in
-                    Text("\(transaction.amount) \(transaction.formattedCategory)")
-                        .font(.body)
-                        .padding(.horizontal, 8)
+                    HStack {
+                        Text("\(transaction.amount) \(transaction.formattedCategory)")
+                            .font(.body)
+                            .padding(.horizontal, 8)
+                        Spacer()
+                    }
+                    .contextMenu {
+                        Button(role: .destructive, action: {
+                            transactionManager.deleteTransaction(transaction)
+                        }) {
+                            Label("Удалить", systemImage: "trash")
+                        }
+                    }
                 }
             } else {
                 Text("0 бесплатный день")

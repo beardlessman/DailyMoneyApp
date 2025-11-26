@@ -21,6 +21,11 @@ class TransactionManager: ObservableObject {
         saveTransactions()
     }
     
+    func deleteTransaction(_ transaction: Transaction) {
+        transactions.removeAll { $0.id == transaction.id }
+        saveTransactions()
+    }
+    
     func saveTransactions() {
         // Создаем директорию, если её нет
         try? FileManager.default.createDirectory(at: documentsURL, withIntermediateDirectories: true)
