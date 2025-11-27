@@ -5,8 +5,6 @@ struct LogView: View {
     @EnvironmentObject var navigationManager: NavigationManager
     @EnvironmentObject var transactionManager: TransactionManager
     @ObservedObject var gistStorage = GistStorage.shared
-    @State private var showShareSheet = false
-    @State private var showClearConfirmation = false
     @State private var showTokenSettings = false
     
     private var groupedTransactions: [Date: [Transaction]] {
@@ -77,42 +75,10 @@ struct LogView: View {
                 }
                 
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Menu {
-                        if let gistURL = gistStorage.gistURL {
-                            Button(action: {
-                                UIApplication.shared.open(gistURL)
-                            }) {
-                                Label("Открыть Gist", systemImage: "link")
-                            }
-                        }
-                        
-                        Button(action: {
-                            if let url = transactionManager.getLogFileURL() {
-                                showShareSheet = true
-                            }
-                        }) {
-                            Label("Экспортировать лог", systemImage: "square.and.arrow.up")
-                        }
-                        
-                        Button(action: {
-                            transactionManager.reloadFromFile()
-                        }) {
-                            Label("Перезагрузить", systemImage: "arrow.clockwise")
-                        }
-                        
-                        Button(action: {
-                            showTokenSettings = true
-                        }) {
-                            Label("Настройки GitHub", systemImage: "gear")
-                        }
-                        
-                        Button(role: .destructive, action: {
-                            showClearConfirmation = true
-                        }) {
-                            Label("Очистить лог", systemImage: "trash")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
+                    Button(action: {
+                        showTokenSettings = true
+                    }) {
+                        Image(systemName: "gear")
                             .foregroundColor(.blue)
                     }
                 }
@@ -126,21 +92,9 @@ struct LogView: View {
                     }
                 }
             }
-            .alert("Очистить весь лог?", isPresented: $showClearConfirmation) {
-                Button("Отмена", role: .cancel) { }
-                Button("Очистить", role: .destructive) {
-                    transactionManager.clearAllTransactions()
-                }
-            } message: {
-                Text("Все транзакции будут удалены. Это действие нельзя отменить.")
-            }
-            .sheet(isPresented: $showShareSheet) {
-                if let url = transactionManager.getLogFileURL() {
-                    ShareSheet(activityItems: [url])
-                }
-            }
             .sheet(isPresented: $showTokenSettings) {
                 TokenSettingsView()
+                    .environmentObject(transactionManager)
             }
             .onAppear {
                 // Перезагружаем данные при появлении экрана (на случай ручного редактирования)

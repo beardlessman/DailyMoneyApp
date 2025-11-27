@@ -6,6 +6,7 @@ class TransactionManager: ObservableObject {
     @Published var transactions: [Transaction] = []
     @Published var errorMessage: String?
     @Published var showError: Bool = false
+    @Published var isLoading: Bool = true
     
     private let gistStorage = GistStorage.shared
     
@@ -16,6 +17,10 @@ class TransactionManager: ObservableObject {
     }
     
     private func initializeAndLoad() async {
+        await MainActor.run {
+            isLoading = true
+        }
+        
         do {
             print("🔄 Initializing Gist storage...")
             try await gistStorage.initializeIfNeeded()
@@ -24,18 +29,21 @@ class TransactionManager: ObservableObject {
             print("✅ Loaded \(loadedTransactions.count) transactions")
             await MainActor.run {
                 transactions = loadedTransactions
+                isLoading = false
             }
         } catch let error as GistStorageError {
             print("❌ GistStorageError: \(error.errorDescription ?? "Unknown")")
             await MainActor.run {
                 errorMessage = error.errorDescription
                 showError = true
+                isLoading = false
             }
         } catch {
             print("❌ Unknown error: \(error.localizedDescription)")
             await MainActor.run {
                 errorMessage = "Неизвестная ошибка: \(error.localizedDescription)"
                 showError = true
+                isLoading = false
             }
         }
     }
@@ -43,17 +51,18 @@ class TransactionManager: ObservableObject {
     func addTransaction(amount: String, category: String) {
         let transaction = Transaction(amount: amount, category: category)
         
+        // Сразу добавляем транзакцию локально для мгновенного обновления UI
+        transactions.append(transaction)
+        
+        // Синхронизируем с Gist в фоне
         Task {
             do {
                 try await gistStorage.appendEntry(transaction: transaction)
-                await MainActor.run {
-                    transactions.append(transaction)
-                }
             } catch let error as GistStorageError {
-                await MainActor.run {
-                    // Добавляем транзакцию локально даже при ошибке сети
-                    transactions.append(transaction)
-                    if error != .networkError {
+                // При ошибке сети транзакция уже добавлена локально
+                // Показываем ошибку только если это не ошибка сети
+                if error != .networkError {
+                    await MainActor.run {
                         errorMessage = error.errorDescription
                         showError = true
                     }
@@ -81,15 +90,26 @@ class TransactionManager: ObservableObject {
     
     func reloadFromFile() {
         Task {
+            // Не устанавливаем isLoading = true, если транзакции уже загружены
+            // Это предотвращает мигание UI при перезагрузке
+            let wasLoading = isLoading
+            
             do {
                 let loadedTransactions = try await gistStorage.loadLog()
                 await MainActor.run {
                     transactions = loadedTransactions
+                    // Восстанавливаем предыдущее состояние загрузки
+                    if !wasLoading {
+                        isLoading = false
+                    }
                 }
             } catch let error as GistStorageError {
                 await MainActor.run {
                     errorMessage = error.errorDescription
                     showError = true
+                    if !wasLoading {
+                        isLoading = false
+                    }
                 }
             }
         }

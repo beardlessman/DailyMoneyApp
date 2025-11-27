@@ -15,17 +15,99 @@ struct ContentView: View {
     @State private var toasts: [Toast] = []
     
     let categorySuggestions = ["Продукты", "Доставка", "Алкоголь", "Кальян", "Транспорт", "Платежи", "Для дома", "Здоровье", "Кофе"]
-    private let AMOUNT: Double = 4000.0
+    
+    private var MONTHLY_AMOUNT: Double {
+        let savedAmount = UserDefaults.standard.double(forKey: "monthly_amount")
+        return savedAmount > 0 ? savedAmount : 120000.0 // Значение по умолчанию
+    }
+    
+    private var dailyBudget: Double {
+        let calendar = Calendar.current
+        let now = Date()
+        
+        // Проверяем, нужно ли пересчитать дневной бюджет
+        let lastCalculationDate = UserDefaults.standard.object(forKey: "daily_budget_date") as? Date
+        let today6AM = getToday6AM()
+        let today = calendar.startOfDay(for: now)
+        
+        // Пересчитываем, если:
+        // 1. Бюджет никогда не рассчитывался
+        // 2. Бюджет рассчитывался не сегодня
+        // 3. Бюджет рассчитывался сегодня, но до 6 утра, а сейчас уже после 6 утра
+        let shouldRecalculate: Bool
+        if let lastDate = lastCalculationDate {
+            let lastDateDay = calendar.startOfDay(for: lastDate)
+            if lastDateDay < today {
+                // Бюджет рассчитывался вчера или раньше
+                shouldRecalculate = true
+            } else if lastDateDay == today && lastDate < today6AM && now >= today6AM {
+                // Бюджет рассчитывался сегодня до 6 утра, а сейчас уже после 6 утра
+                shouldRecalculate = true
+            } else {
+                // Бюджет уже рассчитан сегодня после 6 утра
+                shouldRecalculate = false
+            }
+        } else {
+            // Бюджет никогда не рассчитывался
+            shouldRecalculate = true
+        }
+        
+        if shouldRecalculate {
+            // Рассчитываем новый дневной бюджет
+            let monthSpent = transactionManager.getMonthSpentAmount()
+            let remainingBudget = MONTHLY_AMOUNT - monthSpent
+            
+            // Рассчитываем остаток дней в месяце (включая сегодня)
+            let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
+            let endOfMonth = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: startOfMonth)!
+            let today = calendar.startOfDay(for: now)
+            let endOfMonthDay = calendar.startOfDay(for: endOfMonth)
+            
+            // Количество дней от сегодня до конца месяца включительно
+            let daysRemaining = calendar.dateComponents([.day], from: today, to: endOfMonthDay).day ?? 1
+            let daysRemainingIncludingToday = max(1, daysRemaining + 1)
+            
+            // Бюджет на день = остаток бюджета / остаток дней
+            let calculatedBudget = remainingBudget / Double(daysRemainingIncludingToday)
+            
+            // Округляем до меньшего значения с точностью до 500 RSD
+            let roundedBudget = floor(calculatedBudget / 500.0) * 500.0
+            
+            // Сохраняем рассчитанный бюджет и дату расчета
+            UserDefaults.standard.set(roundedBudget, forKey: "daily_budget")
+            UserDefaults.standard.set(now, forKey: "daily_budget_date")
+            
+            return roundedBudget
+        } else {
+            // Используем сохраненный бюджет
+            let savedBudget = UserDefaults.standard.double(forKey: "daily_budget")
+            return savedBudget > 0 ? savedBudget : 0
+        }
+    }
     
     private var availableAmount: Double {
-        AMOUNT - transactionManager.getTodaySpentAmount()
+        // Доступная сумма = дневной бюджет - траты сегодня
+        let todaySpent = transactionManager.getTodaySpentAmount()
+        return dailyBudget - todaySpent
+    }
+    
+    private func getToday6AM() -> Date {
+        let calendar = Calendar.current
+        let now = Date()
+        var components = calendar.dateComponents([.year, .month, .day], from: now)
+        components.hour = 6
+        components.minute = 0
+        components.second = 0
+        return calendar.date(from: components) ?? now
     }
     
     private var amountColor: Color {
-        let halfAmount = AMOUNT / 2.0
-        if availableAmount > halfAmount {
+        let available = availableAmount
+        let halfDailyBudget = dailyBudget / 2.0
+        
+        if available > halfDailyBudget {
             return .green
-        } else if availableAmount < 0 {
+        } else if available < 0 {
             return .red
         } else {
             return .black
@@ -63,12 +145,23 @@ struct ContentView: View {
             ZStack {
                 VStack(spacing: 24) {
                     // Отображение доступной суммы
-                    Text("\(Int(availableAmount)) RSD")
-                        .font(.system(size: 30, weight: .bold))
-                        .foregroundColor(amountColor)
-                        .frame(maxWidth: .infinity)
-                        .multilineTextAlignment(.center)
-                        .padding(.bottom, 8)
+                    // Показываем только после загрузки транзакций
+                    if transactionManager.isLoading && transactionManager.transactions.isEmpty {
+                        // Показываем placeholder только при первой загрузке (когда транзакций еще нет)
+                        Text("...")
+                            .font(.system(size: 30, weight: .bold))
+                            .foregroundColor(.gray)
+                            .frame(maxWidth: .infinity)
+                            .multilineTextAlignment(.center)
+                            .padding(.bottom, 8)
+                    } else {
+                        Text("\(Int(availableAmount)) RSD")
+                            .font(.system(size: 30, weight: .bold))
+                            .foregroundColor(amountColor)
+                            .frame(maxWidth: .infinity)
+                            .multilineTextAlignment(.center)
+                            .padding(.bottom, 8)
+                    }
                     
                 ZStack(alignment: .trailing) {
                     TextField("Сумма", text: $amount)
