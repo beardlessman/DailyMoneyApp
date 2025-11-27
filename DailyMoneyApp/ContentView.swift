@@ -13,6 +13,7 @@ struct ContentView: View {
     @FocusState private var isAmountFocused: Bool
     @FocusState private var isCommentFocused: Bool
     @State private var toasts: [Toast] = []
+    @State private var showTokenSettings = false
     
     let categorySuggestions = ["Продукты", "Доставка", "Алкоголь", "Кальян", "Транспорт", "Платежи", "Для дома", "Здоровье", "Кофе"]
     
@@ -155,12 +156,16 @@ struct ContentView: View {
                             .multilineTextAlignment(.center)
                             .padding(.bottom, 8)
                     } else {
-                        Text("\(Int(availableAmount)) RSD")
-                            .font(.system(size: 30, weight: .bold))
-                            .foregroundColor(amountColor)
-                            .frame(maxWidth: .infinity)
-                            .multilineTextAlignment(.center)
-                            .padding(.bottom, 8)
+                        Button(action: {
+                            showTokenSettings = true
+                        }) {
+                            Text("\(Int(availableAmount)) RSD")
+                                .font(.system(size: 30, weight: .bold))
+                                .foregroundColor(amountColor)
+                                .frame(maxWidth: .infinity)
+                                .multilineTextAlignment(.center)
+                                .padding(.bottom, 8)
+                        }
                     }
                     
                 ZStack(alignment: .trailing) {
@@ -298,6 +303,10 @@ struct ContentView: View {
                             .foregroundColor(.blue)
                     }
                 }
+            }
+            .sheet(isPresented: $showTokenSettings) {
+                TokenSettingsView()
+                    .environmentObject(transactionManager)
             }
         }
     }

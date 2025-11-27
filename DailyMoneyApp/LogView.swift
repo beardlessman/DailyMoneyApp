@@ -5,8 +5,8 @@ struct LogView: View {
     @EnvironmentObject var navigationManager: NavigationManager
     @EnvironmentObject var transactionManager: TransactionManager
     @ObservedObject var gistStorage = GistStorage.shared
-    @State private var showTokenSettings = false
     @State private var showGistSettings = false
+    @State private var showShareSheet = false
     
     private var groupedTransactions: [Date: [Transaction]] {
         transactionManager.getGroupedTransactions()
@@ -81,9 +81,11 @@ struct LogView: View {
                 
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: {
-                        showTokenSettings = true
+                        if let url = transactionManager.getLogFileURL() {
+                            showShareSheet = true
+                        }
                     }) {
-                        Image(systemName: "gear")
+                        Image(systemName: "square.and.arrow.up")
                             .foregroundColor(.blue)
                     }
                 }
@@ -97,24 +99,18 @@ struct LogView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showTokenSettings) {
-                TokenSettingsView()
-                    .environmentObject(transactionManager)
-            }
             .sheet(isPresented: $showGistSettings) {
                 GistSettingsView()
                     .environmentObject(transactionManager)
             }
+            .sheet(isPresented: $showShareSheet) {
+                if let url = transactionManager.getLogFileURL() {
+                    ShareSheet(activityItems: [url])
+                }
+            }
             .onAppear {
                 // Перезагружаем данные при появлении экрана (на случай ручного редактирования)
                 transactionManager.reloadFromFile()
-                
-                // Показываем настройки Gist при первом запуске, если токен не установлен
-                if !gistStorage.hasToken {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        showGistSettings = true
-                    }
-                }
             }
         }
     }

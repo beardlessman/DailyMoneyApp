@@ -7,8 +7,6 @@ struct TokenSettingsView: View {
     @State private var showError: Bool = false
     @State private var errorMessage: String = ""
     @State private var monthlyAmountInput: String = ""
-    @State private var showShareSheet = false
-    @State private var showClearConfirmation = false
     
     private var defaultMonthlyAmount: Double {
         let savedAmount = UserDefaults.standard.double(forKey: "monthly_amount")
@@ -18,25 +16,6 @@ struct TokenSettingsView: View {
     var body: some View {
         NavigationView {
             Form {
-                Section {
-                    Button(action: {
-                        if let url = transactionManager.getLogFileURL() {
-                            showShareSheet = true
-                        }
-                    }) {
-                        Label("Экспортировать лог", systemImage: "square.and.arrow.up")
-                    }
-                    
-                    Button(role: .destructive, action: {
-                        showClearConfirmation = true
-                    }) {
-                        Label("Очистить лог", systemImage: "trash")
-                            .foregroundColor(.red)
-                    }
-                } header: {
-                    Text("Действия")
-                }
-                
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Бюджет на месяц")
@@ -83,19 +62,6 @@ struct TokenSettingsView: View {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text(errorMessage)
-            }
-            .alert("Очистить весь лог?", isPresented: $showClearConfirmation) {
-                Button("Отмена", role: .cancel) { }
-                Button("Очистить", role: .destructive) {
-                    transactionManager.clearAllTransactions()
-                }
-            } message: {
-                Text("Все транзакции будут удалены. Это действие нельзя отменить.")
-            }
-            .sheet(isPresented: $showShareSheet) {
-                if let url = transactionManager.getLogFileURL() {
-                    ShareSheet(activityItems: [url])
-                }
             }
         }
         .onAppear {
