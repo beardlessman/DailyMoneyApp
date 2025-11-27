@@ -6,6 +6,7 @@ struct LogView: View {
     @EnvironmentObject var transactionManager: TransactionManager
     @ObservedObject var gistStorage = GistStorage.shared
     @State private var showTokenSettings = false
+    @State private var showGistSettings = false
     
     private var groupedTransactions: [Date: [Transaction]] {
         transactionManager.getGroupedTransactions()
@@ -71,7 +72,11 @@ struct LogView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    syncStatusIcon
+                    Button(action: {
+                        showGistSettings = true
+                    }) {
+                        syncStatusIcon
+                    }
                 }
                 
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -96,14 +101,18 @@ struct LogView: View {
                 TokenSettingsView()
                     .environmentObject(transactionManager)
             }
+            .sheet(isPresented: $showGistSettings) {
+                GistSettingsView()
+                    .environmentObject(transactionManager)
+            }
             .onAppear {
                 // Перезагружаем данные при появлении экрана (на случай ручного редактирования)
                 transactionManager.reloadFromFile()
                 
-                // Показываем настройки токена при первом запуске, если токен не установлен
+                // Показываем настройки Gist при первом запуске, если токен не установлен
                 if !gistStorage.hasToken {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        showTokenSettings = true
+                        showGistSettings = true
                     }
                 }
             }

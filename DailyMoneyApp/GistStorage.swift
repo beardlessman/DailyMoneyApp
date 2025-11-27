@@ -117,7 +117,11 @@ class GistStorage: ObservableObject {
     
     func clearToken() {
         token = nil
-        gistId = nil // Очищаем gist_id при удалении токена
+        // НЕ удаляем gistId - он может быть полезен при повторной установке токена
+        // Если пользователь установит новый токен, мы попробуем использовать существующий Gist
+        Task { @MainActor in
+            syncStatus = .offline
+        }
     }
     
     var hasToken: Bool {
@@ -127,11 +131,32 @@ class GistStorage: ObservableObject {
     // MARK: - Инициализация
     
     func initializeIfNeeded() async throws {
-        if gistId == nil {
+        guard let token = token else {
+            throw GistStorageError.invalidToken
+        }
+        
+        if let existingGistId = gistId {
+            // Проверяем, доступен ли существующий Gist с текущим токеном
+            print("🔍 Checking existing Gist: \(existingGistId)")
+            do {
+                // Пытаемся загрузить содержимое Gist
+                let _ = try await fetchGistContent(gistId: existingGistId, token: token)
+                print("✅ Existing Gist is accessible")
+                // Gist доступен, используем его
+                return
+            } catch let error as GistStorageError {
+                if error == .gistNotFound || error == .invalidToken {
+                    // Gist не найден или токен неверный - создаем новый
+                    print("⚠️ Existing Gist not accessible, creating new one...")
+                    try await createNewGist()
+                } else {
+                    throw error
+                }
+            }
+        } else {
+            // Gist ID не найден, создаем новый
             print("📝 No gist ID found, creating new gist...")
             try await createNewGist()
-        } else {
-            print("✅ Gist ID found: \(gistId ?? "nil")")
         }
     }
     
@@ -234,6 +259,9 @@ class GistStorage: ObservableObject {
         if let gistId = gistId, let token = token {
             do {
                 let content = try await fetchGistContent(gistId: gistId, token: token)
+                print("📄 Gist content (first 500 chars): \(String(content.prefix(500)))")
+                print("📄 Gist content length: \(content.count) characters")
+                print("📄 Gist content lines: \(content.components(separatedBy: .newlines).count)")
                 let transactions = try parseMarkdown(content)
                 // Сохраняем в кэш
                 saveCache(content)
@@ -242,6 +270,7 @@ class GistStorage: ObservableObject {
                 }
                 return transactions
             } catch let error as GistStorageError {
+                print("❌ GistStorageError: \(error)")
                 if error == .gistNotFound {
                     // Создаём новый gist
                     try await createNewGist()
@@ -256,14 +285,27 @@ class GistStorage: ObservableObject {
                     throw error
                 } else {
                     // Ошибка сети - используем кэш
+                    print("⚠️ Network error, trying cache...")
                     await MainActor.run {
                         syncStatus = .offline
                     }
                     if let cachedContent = loadCache() {
+                        print("✅ Using cached content (length: \(cachedContent.count))")
                         return try parseMarkdown(cachedContent)
                     }
+                    print("❌ No cache available")
                     throw error
                 }
+            } catch {
+                print("❌ Unexpected error: \(error)")
+                await MainActor.run {
+                    syncStatus = .offline
+                }
+                if let cachedContent = loadCache() {
+                    print("✅ Using cached content after unexpected error")
+                    return try parseMarkdown(cachedContent)
+                }
+                throw error
             }
         }
         
@@ -302,9 +344,33 @@ class GistStorage: ObservableObject {
         }
         
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        guard let files = json["files"] as? [String: Any],
-              let file = files["DailyMoneyLog.md"] as? [String: Any],
-              let content = file["content"] as? String else {
+        print("📦 Gist JSON keys: \(json.keys)")
+        
+        guard let files = json["files"] as? [String: Any] else {
+            print("❌ No 'files' key in response")
+            print("📦 JSON structure: \(json)")
+            throw GistStorageError.parseError
+        }
+        
+        print("📁 Files in Gist: \(files.keys)")
+        
+        // Если файлов нет, не создаем файл автоматически - это может перезаписать данные
+        if files.isEmpty {
+            print("❌ Gist exists but has no files")
+            throw GistStorageError.unknownError("Gist пуст. Создайте файл DailyMoneyLog.md вручную в Gist или создайте новый Gist.")
+        }
+        
+        guard let file = files["DailyMoneyLog.md"] as? [String: Any] else {
+            print("❌ No 'DailyMoneyLog.md' file in Gist")
+            print("📁 Available files: \(files.keys)")
+            throw GistStorageError.unknownError("Файл DailyMoneyLog.md не найден в Gist. Доступные файлы: \(files.keys.joined(separator: ", ")). Создайте файл DailyMoneyLog.md вручную в Gist.")
+        }
+        
+        print("📄 File keys: \(file.keys)")
+        
+        guard let content = file["content"] as? String else {
+            print("❌ No 'content' key in file")
+            print("📄 File structure: \(file)")
             throw GistStorageError.parseError
         }
         
@@ -362,6 +428,60 @@ class GistStorage: ObservableObject {
         }
     }
     
+    func syncWithGist(localTransactions: [Transaction]) async throws -> [Transaction] {
+        guard let gistId = gistId, let token = token else {
+            throw GistStorageError.invalidToken
+        }
+        
+        await MainActor.run {
+            syncStatus = .syncing
+        }
+        
+        do {
+            // Загружаем транзакции из Gist
+            let gistTransactions = try await loadLog()
+            
+            // Создаем множество для сравнения транзакций по содержимому (не по ID)
+            // Сравниваем по дате, сумме и категории
+            func transactionKey(_ t: Transaction) -> String {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+                return "\(formatter.string(from: t.date))|\(t.amount)|\(t.category)"
+            }
+            
+            let gistKeys = Set(gistTransactions.map { transactionKey($0) })
+            
+            // Объединяем: берем все транзакции из Gist и добавляем локальные, которых там нет
+            var mergedTransactions = gistTransactions
+            
+            for localTransaction in localTransactions {
+                let localKey = transactionKey(localTransaction)
+                if !gistKeys.contains(localKey) {
+                    mergedTransactions.append(localTransaction)
+                }
+            }
+            
+            // Сортируем по дате (новые первыми)
+            mergedTransactions.sort { $0.date > $1.date }
+            
+            // Если есть изменения, отправляем обратно в Gist
+            if mergedTransactions.count != gistTransactions.count {
+                try await overwriteLog(transactions: mergedTransactions)
+            }
+            
+            await MainActor.run {
+                syncStatus = .connected
+            }
+            
+            return mergedTransactions
+        } catch {
+            await MainActor.run {
+                syncStatus = .offline
+            }
+            throw error
+        }
+    }
+    
     func overwriteLog(transactions: [Transaction]) async throws {
         await MainActor.run {
             syncStatus = .syncing
@@ -401,6 +521,7 @@ class GistStorage: ObservableObject {
         request.httpMethod = "PATCH"
         request.setValue("token \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
         
         let body = GistUpdateRequest(
             files: [
@@ -435,19 +556,75 @@ class GistStorage: ObservableObject {
         }
     }
     
+    // MARK: - Создание файла в существующем Gist
+    
+    private func createFileInGist(gistId: String, token: String, content: String) async throws {
+        let url = URL(string: "https://api.github.com/gists/\(gistId)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("token \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
+        
+        let body = GistUpdateRequest(
+            files: [
+                "DailyMoneyLog.md": GistFile(content: content)
+            ]
+        )
+        
+        do {
+            let encoder = JSONEncoder()
+            request.httpBody = try encoder.encode(body)
+        } catch {
+            print("❌ JSON encoding error: \(error)")
+            throw GistStorageError.unknownError("Ошибка формирования запроса: \(error.localizedDescription)")
+        }
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw GistStorageError.networkError
+        }
+        
+        if httpResponse.statusCode == 401 {
+            throw GistStorageError.invalidToken
+        }
+        
+        if httpResponse.statusCode == 404 {
+            throw GistStorageError.gistNotFound
+        }
+        
+        guard httpResponse.statusCode == 200 else {
+            let errorMessage = "Ошибка создания файла в Gist: \(httpResponse.statusCode)"
+            if let responseData = String(data: data, encoding: .utf8) {
+                print("❌ Gist update error response: \(responseData)")
+            }
+            throw GistStorageError.unknownError(errorMessage)
+        }
+        
+        print("✅ File created in Gist successfully")
+    }
+    
     // MARK: - Кэш
     
     private func saveCache(_ content: String) {
         guard let cacheURL = getCacheURL() else { return }
+        print("💾 Saving cache (length: \(content.count)) to \(cacheURL.path)")
         try? content.write(to: cacheURL, atomically: true, encoding: .utf8)
     }
     
     private func loadCache() -> String? {
         guard let cacheURL = getCacheURL(),
               FileManager.default.fileExists(atPath: cacheURL.path) else {
+            print("📭 No cache file found")
             return nil
         }
-        return try? String(contentsOf: cacheURL, encoding: .utf8)
+        if let content = try? String(contentsOf: cacheURL, encoding: .utf8) {
+            print("📂 Loaded cache from \(cacheURL.path) (length: \(content.count))")
+            return content
+        }
+        print("❌ Failed to read cache from \(cacheURL.path)")
+        return nil
     }
     
     private func getCacheURL() -> URL? {
@@ -552,6 +729,7 @@ class GistStorage: ObservableObject {
     
     private func parseMarkdown(_ content: String) throws -> [Transaction] {
         let lines = content.components(separatedBy: .newlines)
+        print("🔍 Parsing \(lines.count) lines")
         var transactions: [Transaction] = []
         var currentDate: Date?
         
@@ -564,12 +742,19 @@ class GistStorage: ObservableObject {
         // Устанавливаем двухзначный год в диапазоне 2000-2099
         dayFormatter.twoDigitStartDate = Calendar.current.date(from: DateComponents(year: 2000, month: 1, day: 1))
         
-        for line in lines {
+        for (index, line) in lines.enumerated() {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty { continue }
             
+            // Пропускаем Markdown заголовки (строки, начинающиеся с #)
+            if trimmed.hasPrefix("#") {
+                print("⏭️ Line \(index): Skipping Markdown header: \(trimmed)")
+                continue
+            }
+            
             // Пропускаем заголовки месяцев
             if trimmed.contains(" - ") && !trimmed.contains(".") {
+                print("⏭️ Line \(index): Skipping month header: \(trimmed)")
                 continue
             }
             
@@ -579,10 +764,10 @@ class GistStorage: ObservableObject {
             if trimmed.range(of: datePattern, options: .regularExpression) != nil {
                 if let date = dayFormatter.date(from: trimmed) {
                     currentDate = date
-                    print("📅 Parsed date: \(trimmed) -> \(date)")
+                    print("📅 Line \(index): Parsed date: \(trimmed) -> \(date)")
                     continue
                 } else {
-                    print("⚠️ Failed to parse date: \(trimmed)")
+                    print("⚠️ Line \(index): Failed to parse date: \(trimmed)")
                 }
             }
             
