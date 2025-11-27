@@ -4,8 +4,10 @@ import UIKit
 struct LogView: View {
     @EnvironmentObject var navigationManager: NavigationManager
     @EnvironmentObject var transactionManager: TransactionManager
+    @ObservedObject var gistStorage = GistStorage.shared
     @State private var showShareSheet = false
     @State private var showClearConfirmation = false
+    @State private var showTokenSettings = false
     
     private var groupedTransactions: [Date: [Transaction]] {
         transactionManager.getGroupedTransactions()
@@ -70,14 +72,38 @@ struct LogView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    syncStatusIcon
+                }
+                
                 ToolbarItem(placement: .navigationBarLeading) {
                     Menu {
+                        if let gistURL = gistStorage.gistURL {
+                            Button(action: {
+                                UIApplication.shared.open(gistURL)
+                            }) {
+                                Label("Открыть Gist", systemImage: "link")
+                            }
+                        }
+                        
                         Button(action: {
-                            // Сохраняем файл перед экспортом
-                            transactionManager.saveTransactions()
-                            showShareSheet = true
+                            if let url = transactionManager.getLogFileURL() {
+                                showShareSheet = true
+                            }
                         }) {
                             Label("Экспортировать лог", systemImage: "square.and.arrow.up")
+                        }
+                        
+                        Button(action: {
+                            transactionManager.reloadFromFile()
+                        }) {
+                            Label("Перезагрузить", systemImage: "arrow.clockwise")
+                        }
+                        
+                        Button(action: {
+                            showTokenSettings = true
+                        }) {
+                            Label("Настройки GitHub", systemImage: "gear")
                         }
                         
                         Button(role: .destructive, action: {
@@ -109,11 +135,45 @@ struct LogView: View {
                 Text("Все транзакции будут удалены. Это действие нельзя отменить.")
             }
             .sheet(isPresented: $showShareSheet) {
-                ShareSheet(activityItems: [transactionManager.getLogFileURL()])
+                if let url = transactionManager.getLogFileURL() {
+                    ShareSheet(activityItems: [url])
+                }
+            }
+            .sheet(isPresented: $showTokenSettings) {
+                TokenSettingsView()
             }
             .onAppear {
                 // Перезагружаем данные при появлении экрана (на случай ручного редактирования)
                 transactionManager.reloadFromFile()
+                
+                // Показываем настройки токена при первом запуске, если токен не установлен
+                if !gistStorage.hasToken {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        showTokenSettings = true
+                    }
+                }
+            }
+        }
+    }
+    
+    private var syncStatusIcon: some View {
+        Group {
+            switch gistStorage.syncStatus {
+            case .connected:
+                Image(systemName: "checkmark.icloud.fill")
+                    .foregroundColor(.green)
+            case .offline:
+                Image(systemName: "icloud.slash.fill")
+                    .foregroundColor(.orange)
+            case .tokenError:
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.red)
+            case .conflict:
+                Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
+                    .foregroundColor(.yellow)
+            case .syncing:
+                Image(systemName: "arrow.clockwise.icloud.fill")
+                    .foregroundColor(.blue)
             }
         }
     }

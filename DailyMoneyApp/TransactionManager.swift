@@ -4,64 +4,95 @@ import SwiftUI
 
 class TransactionManager: ObservableObject {
     @Published var transactions: [Transaction] = []
-    private let jsonFileName = "transactions.json"
-    private let logFileName = "daily_money_log.txt"
+    @Published var errorMessage: String?
+    @Published var showError: Bool = false
     
-    private var documentsURL: URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-    }
+    private let gistStorage = GistStorage.shared
     
     init() {
-        loadTransactions()
+        Task {
+            await initializeAndLoad()
+        }
+    }
+    
+    private func initializeAndLoad() async {
+        do {
+            print("🔄 Initializing Gist storage...")
+            try await gistStorage.initializeIfNeeded()
+            print("✅ Gist initialized, loading transactions...")
+            let loadedTransactions = try await gistStorage.loadLog()
+            print("✅ Loaded \(loadedTransactions.count) transactions")
+            await MainActor.run {
+                transactions = loadedTransactions
+            }
+        } catch let error as GistStorageError {
+            print("❌ GistStorageError: \(error.errorDescription ?? "Unknown")")
+            await MainActor.run {
+                errorMessage = error.errorDescription
+                showError = true
+            }
+        } catch {
+            print("❌ Unknown error: \(error.localizedDescription)")
+            await MainActor.run {
+                errorMessage = "Неизвестная ошибка: \(error.localizedDescription)"
+                showError = true
+            }
+        }
     }
     
     func addTransaction(amount: String, category: String) {
         let transaction = Transaction(amount: amount, category: category)
-        transactions.append(transaction)
-        saveTransactions()
+        
+        Task {
+            do {
+                try await gistStorage.appendEntry(transaction: transaction)
+                await MainActor.run {
+                    transactions.append(transaction)
+                }
+            } catch let error as GistStorageError {
+                await MainActor.run {
+                    // Добавляем транзакцию локально даже при ошибке сети
+                    transactions.append(transaction)
+                    if error != .networkError {
+                        errorMessage = error.errorDescription
+                        showError = true
+                    }
+                }
+            }
+        }
     }
     
     func deleteTransaction(_ transaction: Transaction) {
         transactions.removeAll { $0.id == transaction.id }
-        saveTransactions()
-    }
-    
-    func saveTransactions() {
-        // Создаем директорию, если её нет
-        try? FileManager.default.createDirectory(at: documentsURL, withIntermediateDirectories: true)
         
-        // Сохраняем JSON для структурированных данных
-        let jsonURL = documentsURL.appendingPathComponent(jsonFileName)
-        if let encoded = try? JSONEncoder().encode(transactions) {
-            try? encoded.write(to: jsonURL)
-        }
-        
-        // Сохраняем текстовый лог для ручного редактирования
-        let logURL = documentsURL.appendingPathComponent(logFileName)
-        let logText = getAllTransactionsFormatted()
-        try? logText.write(to: logURL, atomically: true, encoding: .utf8)
-    }
-    
-    func loadTransactions() {
-        let jsonURL = documentsURL.appendingPathComponent(jsonFileName)
-        
-        // Пытаемся загрузить из JSON
-        if let data = try? Data(contentsOf: jsonURL),
-           let decoded = try? JSONDecoder().decode([Transaction].self, from: data) {
-            transactions = decoded
-            return
-        }
-        
-        // Если JSON нет, пытаемся загрузить из текстового файла
-        let logURL = documentsURL.appendingPathComponent(logFileName)
-        if let logText = try? String(contentsOf: logURL, encoding: .utf8) {
-            parseTransactionsFromLog(logText)
+        Task {
+            do {
+                try await gistStorage.overwriteLog(transactions: transactions)
+            } catch let error as GistStorageError {
+                await MainActor.run {
+                    if error != .networkError {
+                        errorMessage = error.errorDescription
+                        showError = true
+                    }
+                }
+            }
         }
     }
     
     func reloadFromFile() {
-        // Перезагружаем транзакции из файла (полезно после ручного редактирования)
-        loadTransactions()
+        Task {
+            do {
+                let loadedTransactions = try await gistStorage.loadLog()
+                await MainActor.run {
+                    transactions = loadedTransactions
+                }
+            } catch let error as GistStorageError {
+                await MainActor.run {
+                    errorMessage = error.errorDescription
+                    showError = true
+                }
+            }
+        }
     }
     
     private func parseTransactionsFromLog(_ logText: String) {
@@ -239,13 +270,31 @@ class TransactionManager: ObservableObject {
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
-    func getLogFileURL() -> URL {
-        return documentsURL.appendingPathComponent(logFileName)
+    func getLogFileURL() -> URL? {
+        // Возвращаем URL кэша для экспорта
+        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        let cacheURL = appSupport.appendingPathComponent("DailyMoneyLog_cache.md")
+        if FileManager.default.fileExists(atPath: cacheURL.path) {
+            return cacheURL
+        }
+        return nil
     }
     
     func clearAllTransactions() {
         transactions = []
-        saveTransactions()
+        
+        Task {
+            do {
+                try await gistStorage.overwriteLog(transactions: [])
+            } catch let error as GistStorageError {
+                await MainActor.run {
+                    errorMessage = error.errorDescription
+                    showError = true
+                }
+            }
+        }
     }
     
     func getTodaySpentAmount() -> Double {
