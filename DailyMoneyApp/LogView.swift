@@ -34,39 +34,61 @@ struct LogView: View {
     
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    // Заголовок месяца (только если есть транзакции)
-                    if hasTransactions {
-                        HStack {
-                            Text(transactionManager.getMonthString())
-                                .font(.title2)
-                                .fontWeight(.bold)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 10)
-                            Spacer()
-                            Text("\(Int(transactionManager.getMonthSpentAmount())) RSD")
-                                .font(.title3)
-                        }
-                        .contextMenu {
-                            Button(action: {
-                                let logText = transactionManager.getFormattedLog()
-                                UIPasteboard.general.string = logText
-                            }) {
-                                Label("Копировать лог за месяц", systemImage: "doc.on.doc")
+            ZStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        // Заголовок месяца (только если есть транзакции)
+                        if hasTransactions {
+                            HStack {
+                                Text(transactionManager.getMonthString())
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 10)
+                                Spacer()
+                                Text("\(Int(transactionManager.getMonthSpentAmount())) RSD")
+                                    .font(.title3)
+                            }
+                            .contextMenu {
+                                Button(action: {
+                                    let logText = transactionManager.getFormattedLog()
+                                    UIPasteboard.general.string = logText
+                                }) {
+                                    Label("Копировать лог за месяц", systemImage: "doc.on.doc")
+                                }
+                            }
+                            
+                            
+                            // Список дней (уже отсортированы в обратном порядке)
+                            ForEach(daysInMonth, id: \.self) { date in
+                                DayView(date: date, grouped: groupedTransactions, transactionManager: transactionManager)
                             }
                         }
-                        
-                        
-                        // Список дней (уже отсортированы в обратном порядке)
-                        ForEach(daysInMonth, id: \.self) { date in
-                            DayView(date: date, grouped: groupedTransactions, transactionManager: transactionManager)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 100) // Отступ снизу для кнопки синхронизации
+                }
+                
+                // Кнопка синхронизации справа внизу
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            transactionManager.syncWithGist()
+                        }) {
+                            Image(systemName: "arrow.clockwise.circle.fill")
+                                .font(.system(size: 50))
+                                .foregroundColor(.blue)
+                                .background(Color.white)
+                                .clipShape(Circle())
+                                .shadow(radius: 5)
                         }
+                        .padding(.trailing, 20)
+                        .padding(.bottom, 20)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 10)
-                .padding(.bottom, 20)
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
@@ -107,10 +129,6 @@ struct LogView: View {
                 if let url = transactionManager.getLogFileURL() {
                     ShareSheet(activityItems: [url])
                 }
-            }
-            .onAppear {
-                // Перезагружаем данные при появлении экрана (на случай ручного редактирования)
-                transactionManager.reloadFromFile()
             }
         }
     }

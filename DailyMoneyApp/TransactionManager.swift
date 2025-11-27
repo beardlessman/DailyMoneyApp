@@ -12,37 +12,47 @@ class TransactionManager: ObservableObject {
     
     init() {
         Task {
-            await initializeAndLoad()
+            await loadFromCache()
         }
     }
     
-    private func initializeAndLoad() async {
+    private func loadFromCache() async {
         await MainActor.run {
             isLoading = true
         }
         
-        do {
-            print("🔄 Initializing Gist storage...")
-            try await gistStorage.initializeIfNeeded()
-            print("✅ Gist initialized, loading transactions...")
-            let loadedTransactions = try await gistStorage.loadLog()
-            print("✅ Loaded \(loadedTransactions.count) transactions")
-            await MainActor.run {
-                transactions = loadedTransactions
-                isLoading = false
+        // Загружаем только из локального кэша
+        if let cachedContent = gistStorage.loadCache() {
+            do {
+                var loadedTransactions = try gistStorage.parseCSV(cachedContent)
+                // Дополнительная проверка на дубликаты (на всякий случай)
+                var uniqueTransactions: [Transaction] = []
+                var seenTimestamps = Set<TimeInterval>()
+                for transaction in loadedTransactions {
+                    // Используем округленный timestamp для сравнения
+                    let roundedTimestamp = transaction.roundedTimestamp
+                    if !seenTimestamps.contains(roundedTimestamp) {
+                        uniqueTransactions.append(transaction)
+                        seenTimestamps.insert(roundedTimestamp)
+                    }
+                }
+                loadedTransactions = uniqueTransactions
+                await MainActor.run {
+                    transactions = loadedTransactions
+                    removeDuplicates()
+                    isLoading = false
+                }
+            } catch {
+                print("❌ Failed to parse cache: \(error.localizedDescription)")
+                await MainActor.run {
+                    transactions = []
+                    isLoading = false
+                }
             }
-        } catch let error as GistStorageError {
-            print("❌ GistStorageError: \(error.errorDescription ?? "Unknown")")
+        } else {
+            print("📭 No cache found, starting with empty transactions")
             await MainActor.run {
-                errorMessage = error.errorDescription
-                showError = true
-                isLoading = false
-            }
-        } catch {
-            print("❌ Unknown error: \(error.localizedDescription)")
-            await MainActor.run {
-                errorMessage = "Неизвестная ошибка: \(error.localizedDescription)"
-                showError = true
+                transactions = []
                 isLoading = false
             }
         }
@@ -51,65 +61,79 @@ class TransactionManager: ObservableObject {
     func addTransaction(amount: String, category: String) {
         let transaction = Transaction(amount: amount, category: category)
         
-        // Сразу добавляем транзакцию локально для мгновенного обновления UI
-        transactions.append(transaction)
-        
-        // Синхронизируем с Gist в фоне
-        Task {
-            do {
-                try await gistStorage.appendEntry(transaction: transaction)
-            } catch let error as GistStorageError {
-                // При ошибке сети транзакция уже добавлена локально
-                // Показываем ошибку только если это не ошибка сети
-                if error != .networkError {
-                    await MainActor.run {
-                        errorMessage = error.errorDescription
-                        showError = true
-                    }
-                }
+        let roundedTimestamp = transaction.roundedTimestamp
+        if !transactions.contains(where: { $0.roundedTimestamp == roundedTimestamp }) {
+            transactions.append(transaction)
+            removeDuplicates()
+            saveToCache()
+        }
+    }
+    
+    private func removeDuplicates() {
+        var uniqueTransactions: [Transaction] = []
+        var seenTimestamps = Set<TimeInterval>()
+        for transaction in transactions {
+            let roundedTimestamp = transaction.roundedTimestamp
+            if !seenTimestamps.contains(roundedTimestamp) {
+                uniqueTransactions.append(transaction)
+                seenTimestamps.insert(roundedTimestamp)
             }
         }
+        transactions = uniqueTransactions
     }
     
     func deleteTransaction(_ transaction: Transaction) {
         transactions.removeAll { $0.id == transaction.id }
         
-        Task {
-            do {
-                try await gistStorage.overwriteLog(transactions: transactions)
-            } catch let error as GistStorageError {
-                await MainActor.run {
-                    if error != .networkError {
-                        errorMessage = error.errorDescription
-                        showError = true
-                    }
-                }
-            }
-        }
+        // Сохраняем в локальный кэш
+        saveToCache()
     }
     
-    func reloadFromFile() {
+    private func saveToCache() {
+        // Убираем дубликаты перед сохранением
+        removeDuplicates()
+        // Сохраняем только уникальные транзакции в локальный кэш в CSV формате
+        let formatted = gistStorage.formatCSV(transactions)
+        gistStorage.saveCache(formatted)
+    }
+    
+    func syncWithGist() {
         Task {
-            // Не устанавливаем isLoading = true, если транзакции уже загружены
-            // Это предотвращает мигание UI при перезагрузке
-            let wasLoading = isLoading
+            await MainActor.run {
+                isLoading = true
+            }
             
             do {
-                let loadedTransactions = try await gistStorage.loadLog()
+                // Инициализируем Gist, если нужно
+                try await gistStorage.initializeIfNeeded()
+                
+                // Убираем дубликаты из локальных транзакций перед синхронизацией
+                removeDuplicates()
+                
+                // Синхронизируем локальные транзакции с Gist
+                // Метод вернет объединенный список без дубликатов
+                let syncedTransactions = try await gistStorage.syncWithGist(localTransactions: transactions)
+                
+                // Шаг 8: Сохраняем новый список локально
                 await MainActor.run {
-                    transactions = loadedTransactions
-                    // Восстанавливаем предыдущее состояние загрузки
-                    if !wasLoading {
-                        isLoading = false
-                    }
+                    transactions = syncedTransactions
+                    removeDuplicates()
+                    isLoading = false
                 }
+                
+                // Сохраняем синхронизированные транзакции в кэш
+                saveToCache()
             } catch let error as GistStorageError {
                 await MainActor.run {
                     errorMessage = error.errorDescription
                     showError = true
-                    if !wasLoading {
-                        isLoading = false
-                    }
+                    isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = "Неизвестная ошибка: \(error.localizedDescription)"
+                    showError = true
+                    isLoading = false
                 }
             }
         }
@@ -291,15 +315,23 @@ class TransactionManager: ObservableObject {
     }
     
     func getLogFileURL() -> URL? {
-        // Возвращаем URL кэша для экспорта
+        // Создаем временный файл в Markdown формате для экспорта
         guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             return nil
         }
-        let cacheURL = appSupport.appendingPathComponent("DailyMoneyLog_cache.md")
-        if FileManager.default.fileExists(atPath: cacheURL.path) {
-            return cacheURL
+        let exportURL = appSupport.appendingPathComponent("DailyMoneyLog_export.md")
+        
+        // Форматируем транзакции в Markdown формат
+        let markdownContent = gistStorage.formatTransactions(transactions)
+        
+        // Сохраняем во временный файл
+        do {
+            try markdownContent.write(to: exportURL, atomically: true, encoding: .utf8)
+            return exportURL
+        } catch {
+            print("❌ Failed to create export file: \(error)")
+            return nil
         }
-        return nil
     }
     
     func clearAllTransactions() {

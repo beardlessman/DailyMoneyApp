@@ -13,13 +13,6 @@ struct GistSettingsView: View {
             Form {
                 if gistStorage.hasToken {
                     Section {
-                        Button(action: {
-                            transactionManager.reloadFromFile()
-                            dismiss()
-                        }) {
-                            Label("Перезагрузить из Gist", systemImage: "arrow.clockwise")
-                        }
-                        
                         if let gistURL = gistStorage.gistURL {
                             Button(action: {
                                 UIApplication.shared.open(gistURL)
@@ -143,35 +136,6 @@ struct GistSettingsView: View {
             
             gistStorage.setToken(tokenInput)
             tokenInput = ""
-            
-            // Перезагружаем данные после установки токена
-            Task {
-                do {
-                    try await gistStorage.initializeIfNeeded()
-                    // Синхронизируем локальные транзакции с Gist
-                    let localTransactions = await MainActor.run {
-                        transactionManager.transactions
-                    }
-                    let syncedTransactions = try await gistStorage.syncWithGist(localTransactions: localTransactions)
-                    await MainActor.run {
-                        transactionManager.transactions = syncedTransactions
-                    }
-                } catch {
-                    await MainActor.run {
-                        errorMessage = error.localizedDescription
-                        showError = true
-                    }
-                }
-            }
-        }
-        
-        // Если токен уже был установлен и мы его не меняли, все равно синхронизируем
-        if gistStorage.hasToken && tokenInput.isEmpty {
-            Task {
-                await MainActor.run {
-                    transactionManager.reloadFromFile()
-                }
-            }
         }
         
         dismiss()
