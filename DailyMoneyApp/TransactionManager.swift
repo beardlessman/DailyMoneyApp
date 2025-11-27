@@ -114,7 +114,11 @@ class TransactionManager: ObservableObject {
                 // Метод вернет объединенный список без дубликатов
                 let syncedTransactions = try await gistStorage.syncWithGist(localTransactions: transactions)
                 
-                // Шаг 8: Сохраняем новый список локально
+                // Сохраняем максимальный timestamp из синхронизированных транзакций
+                let maxTimestamp = syncedTransactions.map { $0.timestamp }.max() ?? 0
+                UserDefaults.standard.set(maxTimestamp, forKey: "last_sync_timestamp")
+                
+                // Сохраняем новый список локально
                 await MainActor.run {
                     transactions = syncedTransactions
                     removeDuplicates()
@@ -137,6 +141,16 @@ class TransactionManager: ObservableObject {
                 }
             }
         }
+    }
+    
+    func hasUnsynchronizedTransactions() -> Bool {
+        let lastSyncTimestamp = UserDefaults.standard.double(forKey: "last_sync_timestamp")
+        // Если никогда не синхронизировали, но есть транзакции - показываем кнопку
+        if lastSyncTimestamp == 0 {
+            return !transactions.isEmpty
+        }
+        // Проверяем, есть ли транзакции с timestamp больше последнего синхронизированного
+        return transactions.contains { $0.timestamp > lastSyncTimestamp }
     }
     
     private func parseTransactionsFromLog(_ logText: String) {

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct GistSettingsView: View {
     @ObservedObject var gistStorage = GistStorage.shared
@@ -7,6 +8,7 @@ struct GistSettingsView: View {
     @State private var tokenInput: String = ""
     @State private var showError: Bool = false
     @State private var errorMessage: String = ""
+    @State private var showShareSheet = false
     
     var body: some View {
         NavigationView {
@@ -22,6 +24,17 @@ struct GistSettingsView: View {
                                     Spacer()
                                     Image(systemName: "arrow.up.right.square")
                                 }
+                            }
+                        }
+                        
+                        Button(action: {
+                            if let url = transactionManager.getLogFileURL() {
+                                showShareSheet = true
+                            }
+                        }) {
+                            HStack {
+                                Label("Экспортировать лог", systemImage: "square.and.arrow.up")
+                                Spacer()
                             }
                         }
                     } header: {
@@ -116,6 +129,11 @@ struct GistSettingsView: View {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text(errorMessage)
+            }
+            .sheet(isPresented: $showShareSheet) {
+                if let url = transactionManager.getLogFileURL() {
+                    ShareSheet(activityItems: [url])
+                }
             }
         }
         .onAppear {

@@ -4,9 +4,7 @@ import UIKit
 struct LogView: View {
     @EnvironmentObject var navigationManager: NavigationManager
     @EnvironmentObject var transactionManager: TransactionManager
-    @ObservedObject var gistStorage = GistStorage.shared
     @State private var showGistSettings = false
-    @State private var showShareSheet = false
     
     private var groupedTransactions: [Date: [Transaction]] {
         transactionManager.getGroupedTransactions()
@@ -70,44 +68,36 @@ struct LogView: View {
                     .padding(.bottom, 100) // Отступ снизу для кнопки синхронизации
                 }
                 
-                // Кнопка синхронизации справа внизу
-                VStack {
-                    Spacer()
-                    HStack {
+                // Кнопка синхронизации справа внизу (только если есть несинхронизированные транзакции)
+                if transactionManager.hasUnsynchronizedTransactions() {
+                    VStack {
                         Spacer()
-                        Button(action: {
-                            transactionManager.syncWithGist()
-                        }) {
-                            Image(systemName: "arrow.clockwise.circle.fill")
-                                .font(.system(size: 50))
-                                .foregroundColor(.blue)
-                                .background(Color.white)
-                                .clipShape(Circle())
-                                .shadow(radius: 5)
+                        HStack {
+                            Spacer()
+                            Button(action: {
+                                transactionManager.syncWithGist()
+                            }) {
+                                Image(systemName: "arrow.clockwise.circle.fill")
+                                    .font(.system(size: 50))
+                                    .foregroundColor(.blue)
+                                    .background(Color.white)
+                                    .clipShape(Circle())
+                                    .shadow(radius: 5)
+                            }
+                            .padding(.trailing, 20)
+                            .padding(.bottom, 20)
                         }
-                        .padding(.trailing, 20)
-                        .padding(.bottom, 20)
                     }
                 }
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .principal) {
+                ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: {
                         showGistSettings = true
                     }) {
-                        syncStatusIcon
-                    }
-                }
-                
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
-                        if let url = transactionManager.getLogFileURL() {
-                            showShareSheet = true
-                        }
-                    }) {
-                        Image(systemName: "square.and.arrow.up")
+                        Image(systemName: "gearshape")
                             .foregroundColor(.blue)
                     }
                 }
@@ -124,33 +114,6 @@ struct LogView: View {
             .sheet(isPresented: $showGistSettings) {
                 GistSettingsView()
                     .environmentObject(transactionManager)
-            }
-            .sheet(isPresented: $showShareSheet) {
-                if let url = transactionManager.getLogFileURL() {
-                    ShareSheet(activityItems: [url])
-                }
-            }
-        }
-    }
-    
-    private var syncStatusIcon: some View {
-        Group {
-            switch gistStorage.syncStatus {
-            case .connected:
-                Image(systemName: "checkmark.icloud.fill")
-                    .foregroundColor(.green)
-            case .offline:
-                Image(systemName: "icloud.slash.fill")
-                    .foregroundColor(.orange)
-            case .tokenError:
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundColor(.red)
-            case .conflict:
-                Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
-                    .foregroundColor(.yellow)
-            case .syncing:
-                Image(systemName: "arrow.clockwise.icloud.fill")
-                    .foregroundColor(.blue)
             }
         }
     }
