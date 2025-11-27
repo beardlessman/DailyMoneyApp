@@ -74,7 +74,15 @@ struct TokenSettingsView: View {
         // Сохраняем бюджет на месяц
         if !monthlyAmountInput.isEmpty {
             if let amount = Double(monthlyAmountInput), amount > 0 {
+                let oldAmount = UserDefaults.standard.double(forKey: "monthly_amount")
                 UserDefaults.standard.set(amount, forKey: "monthly_amount")
+                
+                // Если бюджет изменился, сбрасываем дневной бюджет для пересчета
+                if oldAmount != amount {
+                    UserDefaults.standard.removeObject(forKey: "daily_budget")
+                    UserDefaults.standard.removeObject(forKey: "daily_budget_date")
+                    UserDefaults.standard.removeObject(forKey: "last_monthly_amount_for_budget")
+                }
             } else {
                 errorMessage = "Введите корректную сумму бюджета"
                 showError = true

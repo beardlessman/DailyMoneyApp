@@ -17,9 +17,10 @@ struct ContentView: View {
     
     let categorySuggestions = ["Продукты", "Доставка", "Алкоголь", "Кальян", "Транспорт", "Платежи", "Для дома", "Здоровье", "Кофе"]
     
+    @AppStorage("monthly_amount") private var monthlyAmount: Double = 120000.0
+    
     private var MONTHLY_AMOUNT: Double {
-        let savedAmount = UserDefaults.standard.double(forKey: "monthly_amount")
-        return savedAmount > 0 ? savedAmount : 120000.0 // Значение по умолчанию
+        return monthlyAmount > 0 ? monthlyAmount : 120000.0
     }
     
     private var dailyBudget: Double {
@@ -28,6 +29,7 @@ struct ContentView: View {
         
         // Проверяем, нужно ли пересчитать дневной бюджет
         let lastCalculationDate = UserDefaults.standard.object(forKey: "daily_budget_date") as? Date
+        let lastMonthlyAmount = UserDefaults.standard.double(forKey: "last_monthly_amount_for_budget")
         let today6AM = getToday6AM()
         let today = calendar.startOfDay(for: now)
         
@@ -35,6 +37,7 @@ struct ContentView: View {
         // 1. Бюджет никогда не рассчитывался
         // 2. Бюджет рассчитывался не сегодня
         // 3. Бюджет рассчитывался сегодня, но до 6 утра, а сейчас уже после 6 утра
+        // 4. Месячный бюджет изменился с момента последнего расчета
         let shouldRecalculate: Bool
         if let lastDate = lastCalculationDate {
             let lastDateDay = calendar.startOfDay(for: lastDate)
@@ -44,8 +47,11 @@ struct ContentView: View {
             } else if lastDateDay == today && lastDate < today6AM && now >= today6AM {
                 // Бюджет рассчитывался сегодня до 6 утра, а сейчас уже после 6 утра
                 shouldRecalculate = true
+            } else if abs(lastMonthlyAmount - MONTHLY_AMOUNT) > 0.01 {
+                // Месячный бюджет изменился
+                shouldRecalculate = true
             } else {
-                // Бюджет уже рассчитан сегодня после 6 утра
+                // Бюджет уже рассчитан сегодня после 6 утра и месячный бюджет не изменился
                 shouldRecalculate = false
             }
         } else {
@@ -74,9 +80,10 @@ struct ContentView: View {
             // Округляем до меньшего значения с точностью до 500 RSD
             let roundedBudget = floor(calculatedBudget / 500.0) * 500.0
             
-            // Сохраняем рассчитанный бюджет и дату расчета
+            // Сохраняем рассчитанный бюджет, дату расчета и месячный бюджет, на основе которого был рассчитан
             UserDefaults.standard.set(roundedBudget, forKey: "daily_budget")
             UserDefaults.standard.set(now, forKey: "daily_budget_date")
+            UserDefaults.standard.set(MONTHLY_AMOUNT, forKey: "last_monthly_amount_for_budget")
             
             return roundedBudget
         } else {
