@@ -786,6 +786,11 @@ class GistStorage: ObservableObject {
             // Округляем до одного знака после точки
             let roundedTimestamp = Transaction.roundTimestamp(timestamp)
             
+            // Date в Swift всегда хранит время в UTC, но при использовании Calendar.current
+            // он автоматически интерпретирует его в локальном часовом поясе
+            // Проблема может быть в том, что при парсинге ISO8601 дата уже в UTC,
+            // но нам нужно использовать эту дату как есть - Calendar сам конвертирует при необходимости
+            
             // Проверяем на дубликаты по округленному timestamp
             if !seenTimestamps.contains(roundedTimestamp) {
                 let transaction = Transaction(amount: amount, category: cleanCategory, date: date, timestamp: roundedTimestamp)

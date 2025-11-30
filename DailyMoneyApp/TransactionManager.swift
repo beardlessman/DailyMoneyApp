@@ -242,10 +242,15 @@ class TransactionManager: ObservableObject {
         let calendar = Calendar.current
         let now = Date()
         let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
-        let endOfMonth = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: startOfMonth)!
+        // Вычисляем начало следующего месяца для правильного сравнения
+        let nextMonthStart = calendar.date(byAdding: .month, value: 1, to: startOfMonth)!
         
         return transactions.filter { transaction in
-            transaction.date >= startOfMonth && transaction.date <= endOfMonth
+            // Используем startOfDay для правильного сравнения дат в локальном часовом поясе
+            let transactionDayStart = calendar.startOfDay(for: transaction.date)
+            let monthStart = calendar.startOfDay(for: startOfMonth)
+            // Транзакция попадает в текущий месяц, если её день >= начала месяца и < начала следующего месяца
+            return transactionDayStart >= monthStart && transactionDayStart < nextMonthStart
         }
     }
     
