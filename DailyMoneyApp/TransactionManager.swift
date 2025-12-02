@@ -356,6 +356,9 @@ class TransactionManager: ObservableObject {
     func clearAllTransactions() {
         transactions = []
         
+        // Очищаем локальный кэш
+        saveToCache()
+        
         Task {
             do {
                 try await gistStorage.overwriteLog(transactions: [])

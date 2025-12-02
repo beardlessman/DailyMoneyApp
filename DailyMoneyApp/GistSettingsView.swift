@@ -9,6 +9,7 @@ struct GistSettingsView: View {
     @State private var showError: Bool = false
     @State private var errorMessage: String = ""
     @State private var showShareSheet = false
+    @State private var showClearConfirmation = false
     
     var body: some View {
         NavigationView {
@@ -34,6 +35,16 @@ struct GistSettingsView: View {
                         }) {
                             HStack {
                                 Label("Экспортировать лог", systemImage: "square.and.arrow.up")
+                                Spacer()
+                            }
+                        }
+                        
+                        Button(role: .destructive, action: {
+                            showClearConfirmation = true
+                        }) {
+                            HStack {
+                                Label("Очистить лог", systemImage: "trash")
+                                    .foregroundColor(.red)
                                 Spacer()
                             }
                         }
@@ -129,6 +140,14 @@ struct GistSettingsView: View {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text(errorMessage)
+            }
+            .alert("Очистить лог", isPresented: $showClearConfirmation) {
+                Button("Отмена", role: .cancel) { }
+                Button("Очистить", role: .destructive) {
+                    transactionManager.clearAllTransactions()
+                }
+            } message: {
+                Text("Вы уверены, что хотите удалить все транзакции? Это действие нельзя отменить.")
             }
             .sheet(isPresented: $showShareSheet) {
                 if let url = transactionManager.getLogFileURL() {
