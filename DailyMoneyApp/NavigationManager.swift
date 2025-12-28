@@ -6,11 +6,15 @@ class NavigationManager: ObservableObject {
     @Published var selectedTab: Int = 0
     
     func switchToLog() {
-        selectedTab = 1
+        withAnimation(nil) {
+            selectedTab = 1
+        }
     }
     
     func switchToAdd() {
-        selectedTab = 0
+        withAnimation(nil) {
+            selectedTab = 0
+        }
     }
 }
 

@@ -5,6 +5,7 @@ struct LogView: View {
     @EnvironmentObject var navigationManager: NavigationManager
     @EnvironmentObject var transactionManager: TransactionManager
     @State private var showGistSettings = false
+    @State private var hasSwitchedToAdd = false
     
     private var groupedTransactions: [Date: [Transaction]] {
         transactionManager.getGroupedTransactions()
@@ -92,23 +93,36 @@ struct LogView: View {
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
+                    Button {
                         showGistSettings = true
-                    }) {
+                    } label: {
                         Image(systemName: "gearshape")
                             .foregroundColor(.blue)
                     }
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        navigationManager.switchToAdd()
-                    }) {
-                        Image(systemName: "arrow.right")
-                            .foregroundColor(.blue)
-                    }
+                    Image(systemName: "arrow.right")
+                        .foregroundColor(.blue)
+                        .background(Color.clear)
+                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        .highPriorityGesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { _ in
+                                    if !hasSwitchedToAdd {
+                                        hasSwitchedToAdd = true
+                                        navigationManager.switchToAdd()
+                                    }
+                                }
+                                .onEnded { _ in
+                                    hasSwitchedToAdd = false
+                                }
+                        )
+                        .transaction { $0.animation = nil }
                 }
             }
             .sheet(isPresented: $showGistSettings) {

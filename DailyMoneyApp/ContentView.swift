@@ -14,6 +14,7 @@ struct ContentView: View {
     @FocusState private var isCommentFocused: Bool
     @State private var toasts: [Toast] = []
     @State private var showTokenSettings = false
+    @State private var hasSwitchedToLog = false
     
     let categorySuggestions = ["Продукты", "Доставка", "Алкоголь", "Кальян", "Транспорт", "Платежи", "Для дома", "Здоровье", "Кофе"]
     
@@ -122,6 +123,23 @@ struct ContentView: View {
         }
     }
     
+    private func setFocusToAmountField() {
+        // Устанавливаем фокус на поле суммы с несколькими попытками для надежности
+        DispatchQueue.main.async {
+            self.isAmountFocused = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            self.isAmountFocused = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.isAmountFocused = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            // Финальная попытка для надежности
+            self.isAmountFocused = true
+        }
+    }
+    
     private func submitForm() {
         // Если категория не выбрана, подставляем "что-то"
         let categoryText = comment.isEmpty ? "что-то" : comment
@@ -138,7 +156,7 @@ struct ContentView: View {
         // Очистка формы после сабмита
         amount = ""
         comment = "Продукты"
-        isAmountFocused = true
+        setFocusToAmountField()
         
         // Автоматически удаляем тост через 3 секунды
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
@@ -261,20 +279,24 @@ struct ContentView: View {
             }
             .padding(.top, 100)
             .onAppear {
-                if navigationManager.selectedTab == 0 {
-                    isAmountFocused = true
-                }
+                // Устанавливаем фокус при появлении экрана
+                setFocusToAmountField()
             }
             .onChange(of: navigationManager.selectedTab) { newValue in
                 if newValue == 0 {
-                    // Возврат на экран формы - ставим фокус
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        isAmountFocused = true
-                    }
+                    // Возврат на экран формы - ставим фокус с несколькими попытками
+                    setFocusToAmountField()
                 } else {
                     // Переход в лог - убираем фокус
                     isAmountFocused = false
                     isCommentFocused = false
+                }
+            }
+            .task(id: navigationManager.selectedTab) {
+                // Дополнительная проверка при изменении таба
+                if navigationManager.selectedTab == 0 {
+                    try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 секунды
+                    setFocusToAmountField()
                 }
             }
             
@@ -298,17 +320,27 @@ struct ContentView: View {
             }
             }
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
-                        // Убираем фокус перед переходом
-                        isAmountFocused = false
-                        isCommentFocused = false
-                        navigationManager.switchToLog()
-                    }) {
-                        Image(systemName: "list.bullet")
-                            .foregroundColor(.blue)
-                    }
+                    Image(systemName: "list.bullet")
+                        .foregroundColor(.blue)
+                        .background(Color.clear)
+                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        .highPriorityGesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { _ in
+                                    if !hasSwitchedToLog {
+                                        hasSwitchedToLog = true
+                                        navigationManager.switchToLog()
+                                    }
+                                }
+                                .onEnded { _ in
+                                    hasSwitchedToLog = false
+                                }
+                        )
+                        .transaction { $0.animation = nil }
                 }
             }
             .sheet(isPresented: $showTokenSettings) {
