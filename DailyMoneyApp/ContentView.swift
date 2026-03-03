@@ -16,7 +16,7 @@ struct ContentView: View {
     @State private var showTokenSettings = false
     @State private var hasSwitchedToLog = false
     
-    let categorySuggestions = ["Продукты", "Доставка", "Алкоголь", "Кальян", "Транспорт", "Платежи", "Для дома", "Здоровье", "Кофе"]
+    let categorySuggestions = ["Продукты", "Доставка", "Алкоголь", "Кальян", "Машина", "Платежи", "Для дома", "Здоровье", "Кофе", "Подписки", "Подарки"]
     
     @AppStorage("monthly_amount") private var monthlyAmount: Double = 120000.0
     

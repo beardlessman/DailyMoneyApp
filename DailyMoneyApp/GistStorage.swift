@@ -170,7 +170,7 @@ class GistStorage: ObservableObject {
             description: "DailyMoneyApp log file",
             public: false,
             files: [
-                gistFileName: GistFile(content: "timestamp,amount,comment\n")
+                gistFileName: GistFile(content: "amount,comment,timestamp\n")
             ]
         )
         
@@ -182,7 +182,7 @@ class GistStorage: ObservableObject {
         } catch {
             // Fallback на JSONSerialization
             var filesDict = [String: [String: String]]()
-            filesDict[gistFileName] = ["content": "timestamp,amount,comment\n"]
+            filesDict[gistFileName] = ["content": "amount,comment,timestamp\n"]
             let bodyDict: [String: Any] = [
                 "description": "DailyMoneyApp log file",
                 "public": false,
@@ -691,7 +691,7 @@ class GistStorage: ObservableObject {
         // Сортируем по timestamp (от новых к старым)
         let sorted = uniqueTransactions.sorted { $0.timestamp > $1.timestamp }
         
-        var result = "timestamp,amount,comment\n"
+        var result = "amount,comment,timestamp\n"
         // Используем формат без дробных секунд: 2025-11-27T19:13:24Z
         let dateFormatter = ISO8601DateFormatter()
         dateFormatter.formatOptions = [.withInternetDateTime]
@@ -703,7 +703,7 @@ class GistStorage: ObservableObject {
             // Используем formattedCategory для добавления суффиксов " еда" и " алко"
             let comment = transaction.category == "бесплатный день" ? "бесплатный день" : transaction.formattedCategory
             // Всегда экранируем комментарий в кавычках для единообразия
-            result += "\(timestampISO),\(transaction.amount),\"\(comment)\"\n"
+            result += "\(transaction.amount),\"\(comment)\",\(timestampISO)\n"
         }
         return result
     }
@@ -723,13 +723,40 @@ class GistStorage: ObservableObject {
         dateFormatter.formatOptions = [.withInternetDateTime]
         dateFormatter.timeZone = TimeZone(secondsFromGMT: 0) // UTC
         
+        // Определяем порядок столбцов по заголовку, чтобы поддерживать старый и новый формат
+        let header = lines[0].trimmingCharacters(in: .whitespaces).lowercased()
+        let headerColumns = header.components(separatedBy: ",")
+        
+        // Индексы по умолчанию – новый формат: amount,comment,timestamp
+        var amountIndex = 0
+        var commentIndex = 1
+        var timestampIndex = 2
+        
+        if headerColumns.count >= 3 {
+            // Пытаемся найти индексы по именам столбцов
+            for (i, col) in headerColumns.enumerated() {
+                let name = col.trimmingCharacters(in: .whitespaces)
+                if name == "amount" {
+                    amountIndex = i
+                } else if name == "comment" {
+                    commentIndex = i
+                } else if name == "timestamp" {
+                    timestampIndex = i
+                }
+            }
+        } else if header.hasPrefix("timestamp") {
+            // Явно поддерживаем старый формат без корректного заголовка
+            timestampIndex = 0
+            amountIndex = 1
+            commentIndex = 2
+        }
+        
         for (index, line) in lines.enumerated() {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty || index == 0 { // Пропускаем пустые строки и заголовок
                 continue
             }
             
-            // Парсим CSV строку: timestamp,amount,comment
             // Используем более надежный парсинг для обработки кавычек в комментариях
             var components: [String] = []
             var currentComponent = ""
@@ -747,13 +774,13 @@ class GistStorage: ObservableObject {
             }
             components.append(currentComponent) // Последний компонент
             
-               guard components.count >= 3 else {
-                   continue
-               }
+            guard components.count > max(timestampIndex, max(amountIndex, commentIndex)) else {
+                continue
+            }
             
-            let timestampStr = components[0].trimmingCharacters(in: .whitespaces)
-            let amount = components[1].trimmingCharacters(in: .whitespaces)
-            var comment = components[2].trimmingCharacters(in: .whitespaces)
+            let amount = components[amountIndex].trimmingCharacters(in: .whitespaces)
+            var comment = components[commentIndex].trimmingCharacters(in: .whitespaces)
+            let timestampStr = components[timestampIndex].trimmingCharacters(in: .whitespaces)
             
             // Убираем кавычки из комментария, если есть
             if comment.hasPrefix("\"") && comment.hasSuffix("\"") {
