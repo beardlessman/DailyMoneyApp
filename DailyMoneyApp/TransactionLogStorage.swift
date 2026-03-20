@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CryptoKit
 
 final class TransactionLogStorage: ObservableObject {
     static let shared = TransactionLogStorage()
@@ -7,6 +8,21 @@ final class TransactionLogStorage: ObservableObject {
     private let cacheFileName = "DailyMoneyLog_cache.csv"
     
     private init() {}
+
+    private func deterministicUUID(from string: String) -> UUID {
+        let data = Data(string.utf8)
+        let digest = SHA256.hash(data: data)
+        let first16 = digest.prefix(16)
+        let hex = first16.map { String(format: "%02x", $0) }.joined()
+        // UUID: 8-4-4-4-12
+        let part1 = String(hex.prefix(8))
+        let part2 = String(hex.dropFirst(8).prefix(4))
+        let part3 = String(hex.dropFirst(12).prefix(4))
+        let part4 = String(hex.dropFirst(16).prefix(4))
+        let part5 = String(hex.dropFirst(20))
+        let uuidString = "\(part1)-\(part2)-\(part3)-\(part4)-\(part5)"
+        return UUID(uuidString: uuidString) ?? UUID()
+    }
     
     // MARK: - Cache
     
@@ -46,7 +62,7 @@ final class TransactionLogStorage: ObservableObject {
         
         let dayFormatter = DateFormatter()
         dayFormatter.locale = Locale(identifier: "ru_RU")
-        dayFormatter.dateFormat = "dd.MM.yy"
+        dayFormatter.dateFormat = "dd.MM.yyyy"
         
         for month in groupedByMonth.keys.sorted(by: >) {
             let monthTransactions = groupedByMonth[month]!
@@ -79,11 +95,7 @@ final class TransactionLogStorage: ObservableObject {
                     }
                     
                     for transaction in sortedTransactions {
-                        if transaction.category == "бесплатный день" {
-                            result += "0 бесплатный день [\(Int(transaction.timestamp))]\n"
-                        } else {
-                            result += "\(transaction.amount) \(transaction.category) [\(Int(transaction.timestamp))]\n"
-                        }
+                        result += "\(transaction.amount) \(transaction.category) [\(dateString)]\n"
                     }
                     
                     result += "\n"
@@ -96,39 +108,68 @@ final class TransactionLogStorage: ObservableObject {
     
     // MARK: - CSV (used for local cache)
     
-    func formatCSV(_ transactions: [Transaction]) -> String {
-        // Убираем дубликаты перед форматированием
+    /// CSV для локального кэша: содержит `id`, чтобы транзакции были идентичны после перезапуска.
+    /// Формат: `id,date,amount,comment` (date в dd.MM.yyyy)
+    func formatCacheCSV(_ transactions: [Transaction]) -> String {
+        // Убираем дубликаты по UUID
         var uniqueTransactions: [Transaction] = []
-        var seenTimestamps = Set<TimeInterval>()
+        var seenIDs = Set<UUID>()
+        
         for transaction in transactions {
-            let roundedTimestamp = transaction.roundedTimestamp
-            if !seenTimestamps.contains(roundedTimestamp) {
+            if !seenIDs.contains(transaction.id) {
                 uniqueTransactions.append(transaction)
-                seenTimestamps.insert(roundedTimestamp)
+                seenIDs.insert(transaction.id)
             }
         }
         
-        // Сортируем по timestamp (от новых к старым)
-        let sorted = uniqueTransactions.sorted { $0.timestamp > $1.timestamp }
+        // Сортируем по дате (от новых к старым)
+        let sorted = uniqueTransactions.sorted { $0.date > $1.date }
         
-        // Новый формат: timestamp,amount,comment
-        var result = "timestamp,amount,comment\n"
+        var result = "id,date,amount,comment\n"
         
-        // Используем формат без дробных секунд: 2025-11-27T19:13:24Z
-        let dateFormatter = ISO8601DateFormatter()
-        dateFormatter.formatOptions = [.withInternetDateTime]
-        dateFormatter.timeZone = TimeZone(secondsFromGMT: 0) // UTC
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "ru_RU")
+        dateFormatter.dateFormat = "dd.MM.yyyy"
         
         for transaction in sorted {
-            let timestampDate = Date(timeIntervalSince1970: transaction.timestamp)
-            let timestampISO = dateFormatter.string(from: timestampDate)
+            let dateStr = dateFormatter.string(from: transaction.date)
+            let comment = transaction.category
+            let escapedComment = comment.replacingOccurrences(of: "\"", with: "\"\"")
             
-            let comment = transaction.category == "бесплатный день"
-                ? "бесплатный день"
-                : transaction.category
+            result += "\(transaction.id.uuidString),\(dateStr),\(transaction.amount),\"\(escapedComment)\"\n"
+        }
+        
+        return result
+    }
+    
+    func formatCSV(_ transactions: [Transaction]) -> String {
+        // Убираем дубликаты по UUID (чтобы не терять разные события с одинаковыми amount/category)
+        var uniqueTransactions: [Transaction] = []
+        var seenIDs = Set<UUID>()
+        for transaction in transactions {
+            if !seenIDs.contains(transaction.id) {
+                uniqueTransactions.append(transaction)
+                seenIDs.insert(transaction.id)
+            }
+        }
+        
+        // Сортируем по дате (от новых к старым)
+        let sorted = uniqueTransactions.sorted { $0.date > $1.date }
+        
+        // Формат CSV: date,amount,comment (date в dd.MM.yyyy)
+        var result = "date,amount,comment\n"
+        
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "ru_RU")
+        dateFormatter.dateFormat = "dd.MM.yyyy"
+        
+        for transaction in sorted {
+            let dateStr = dateFormatter.string(from: transaction.date)
+            let comment = transaction.category
+            let escapedComment = comment.replacingOccurrences(of: "\"", with: "\"\"")
             
-            // Экранируем comment в кавычках (timestamp без кавычек)
-            result += "\(timestampISO),\(transaction.amount),\"\(comment)\"\n"
+            // Экранируем comment в кавычках
+            result += "\(dateStr),\(transaction.amount),\"\(escapedComment)\"\n"
         }
         
         return result
@@ -141,42 +182,64 @@ final class TransactionLogStorage: ObservableObject {
     func parseCSV(_ content: String) throws -> [Transaction] {
         let lines = content.components(separatedBy: .newlines)
         var transactions: [Transaction] = []
-        var seenTimestamps = Set<TimeInterval>() // Для отслеживания дубликатов
         
         guard lines.count > 1 else { return [] }
         
-        let dateFormatter = ISO8601DateFormatter()
-        dateFormatter.formatOptions = [.withInternetDateTime]
-        dateFormatter.timeZone = TimeZone(secondsFromGMT: 0) // UTC
+        let calendar = Calendar.current
         
-        // Определяем порядок столбцов по заголовку, чтобы поддерживать старый формат:
-        // timestamp,amount,comment
-        // и новый:
-        // amount,comment,timestamp
+        // Парсим заголовок, чтобы определить порядок колонок.
+        // Поддерживаем:
+        // 1) новый кэш: id,date,amount,comment (id = UUID, date = dd.MM.yyyy)
+        // 2) экспорт: date,amount,comment (date = dd.MM.yyyy)
+        // 3) старый кэш: timestamp,amount,comment (timestamp = ISO8601)
         let header = lines[0].trimmingCharacters(in: .whitespaces).lowercased()
-        let headerColumns = header.components(separatedBy: ",")
+        let headerColumns = header.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
         
-        var amountIndex = 0
-        var commentIndex = 1
-        var timestampIndex = 2
+        var amountIndex: Int? = nil
+        var commentIndex: Int? = nil
+        var idIndex: Int? = nil
+        var dateIndex: Int? = nil
+        var timestampIndex: Int? = nil
         
-        if headerColumns.count >= 3 {
-            for (i, col) in headerColumns.enumerated() {
-                let name = col.trimmingCharacters(in: .whitespaces)
-                if name == "amount" { amountIndex = i }
-                else if name == "comment" { commentIndex = i }
-                else if name == "timestamp" { timestampIndex = i }
+        for (i, col) in headerColumns.enumerated() {
+            switch col {
+            case "amount":
+                amountIndex = i
+            case "comment":
+                commentIndex = i
+            case "id":
+                idIndex = i
+            case "date":
+                dateIndex = i
+            case "timestamp":
+                timestampIndex = i
+            default:
+                break
             }
-        } else if header.hasPrefix("timestamp") {
-            // Явно поддерживаем старый формат без корректного заголовка
-            timestampIndex = 0
-            amountIndex = 1
-            commentIndex = 2
         }
         
-        for (index, line) in lines.enumerated() {
+        guard let amountIdx = amountIndex, let commentIdx = commentIndex else {
+            return []
+        }
+        
+        let fullDateFormatter = DateFormatter()
+        fullDateFormatter.locale = Locale(identifier: "ru_RU")
+        fullDateFormatter.dateFormat = "dd.MM.yyyy"
+        
+        let shortDateFormatter = DateFormatter()
+        shortDateFormatter.locale = Locale(identifier: "ru_RU")
+        shortDateFormatter.dateFormat = "dd.MM.yy"
+        
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        isoFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+        
+        var seenIDs = Set<UUID>()
+        var seenKeys = Set<String>() // dayStart + amount + category (для форматов без id)
+        
+        for (lineIndex, line) in lines.enumerated() {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty || index == 0 { continue }
+            if trimmed.isEmpty || lineIndex == 0 { continue }
             
             // CSV парсер с поддержкой кавычек в comment
             var components: [String] = []
@@ -195,15 +258,12 @@ final class TransactionLogStorage: ObservableObject {
             }
             components.append(currentComponent)
             
-            if components.count <= max(timestampIndex, max(amountIndex, commentIndex)) {
-                continue
-            }
+            let maxNeeded = max(amountIdx, commentIdx, idIndex ?? 0, dateIndex ?? 0, timestampIndex ?? 0)
+            guard components.count > maxNeeded else { continue }
             
-            let amount = components[amountIndex].trimmingCharacters(in: .whitespaces)
-            var comment = components[commentIndex].trimmingCharacters(in: .whitespaces)
-            let timestampStr = components[timestampIndex].trimmingCharacters(in: .whitespaces)
+            let amount = components[amountIdx].trimmingCharacters(in: .whitespaces)
+            var comment = components[commentIdx].trimmingCharacters(in: .whitespaces)
             
-            // Убираем кавычки из комментария, если они вдруг остались
             if comment.hasPrefix("\"") && comment.hasSuffix("\"") {
                 comment = String(comment.dropFirst().dropLast())
             }
@@ -212,22 +272,35 @@ final class TransactionLogStorage: ObservableObject {
                 .replacingOccurrences(of: " еда", with: "")
                 .replacingOccurrences(of: " алко", with: "")
             
-            // Парсим timestamp - поддерживаем оба формата (с дробными секундами и без)
-            let fractionalFormatter = ISO8601DateFormatter()
-            fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            fractionalFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+            var parsedDate: Date?
             
-            let timestampDate = fractionalFormatter.date(from: timestampStr) ?? dateFormatter.date(from: timestampStr)
-            guard let date = timestampDate else { continue }
-            
-            let timestamp = date.timeIntervalSince1970
-            let roundedTimestamp = Transaction.roundTimestamp(timestamp)
-            
-            if !seenTimestamps.contains(roundedTimestamp) {
-                let transaction = Transaction(amount: amount, category: cleanCategory, date: date, timestamp: roundedTimestamp)
-                transactions.append(transaction)
-                seenTimestamps.insert(roundedTimestamp)
+            if let dIdx = dateIndex {
+                let dateStr = components[dIdx].trimmingCharacters(in: .whitespaces)
+                parsedDate = fullDateFormatter.date(from: dateStr) ?? shortDateFormatter.date(from: dateStr)
+            } else if let tsIdx = timestampIndex {
+                let tsStr = components[tsIdx].trimmingCharacters(in: .whitespaces)
+                parsedDate = isoFormatter.date(from: tsStr)
             }
+            
+            guard let date = parsedDate else { continue }
+            let dayStart = calendar.startOfDay(for: date)
+            let key = "\(dayStart.timeIntervalSince1970)|\(amount)|\(cleanCategory)"
+            
+            if let idIdx = idIndex {
+                let idStr = components[idIdx].trimmingCharacters(in: .whitespacesAndNewlines)
+                if let parsedID = UUID(uuidString: idStr) {
+                    guard !seenIDs.contains(parsedID) else { continue }
+                    transactions.append(Transaction(id: parsedID, amount: amount, category: cleanCategory, date: dayStart))
+                    seenIDs.insert(parsedID)
+                    continue
+                }
+            }
+            
+            // Для форматов без id (или если UUID прочитать не получилось)
+            guard !seenKeys.contains(key) else { continue }
+            let deterministicID = deterministicUUID(from: key)
+            transactions.append(Transaction(id: deterministicID, amount: amount, category: cleanCategory, date: dayStart))
+            seenKeys.insert(key)
         }
         
         return transactions

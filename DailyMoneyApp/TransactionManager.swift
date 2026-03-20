@@ -24,21 +24,9 @@ class TransactionManager: ObservableObject {
         // Загружаем только из локального кэша
         if let cachedContent = logStorage.loadCache() {
             do {
-                var loadedTransactions = try logStorage.parseCSV(cachedContent)
-                // Дополнительная проверка на дубликаты (на всякий случай)
-                var uniqueTransactions: [Transaction] = []
-                var seenTimestamps = Set<TimeInterval>()
-                for transaction in loadedTransactions {
-                    // Используем округленный timestamp для сравнения
-                    let roundedTimestamp = transaction.roundedTimestamp
-                    if !seenTimestamps.contains(roundedTimestamp) {
-                        uniqueTransactions.append(transaction)
-                        seenTimestamps.insert(roundedTimestamp)
-                    }
-                }
-                loadedTransactions = uniqueTransactions
+                let parsedTransactions = try logStorage.parseCSV(cachedContent)
                 await MainActor.run {
-                    transactions = loadedTransactions
+                    transactions = parsedTransactions
                     removeDuplicates()
                     isLoading = false
                 }
@@ -60,23 +48,18 @@ class TransactionManager: ObservableObject {
     
     func addTransaction(amount: String, category: String) {
         let transaction = Transaction(amount: amount, category: category)
-        
-        let roundedTimestamp = transaction.roundedTimestamp
-        if !transactions.contains(where: { $0.roundedTimestamp == roundedTimestamp }) {
-            transactions.append(transaction)
-            removeDuplicates()
-            saveToCache()
-        }
+        transactions.append(transaction)
+        removeDuplicates()
+        saveToCache()
     }
     
     private func removeDuplicates() {
         var uniqueTransactions: [Transaction] = []
-        var seenTimestamps = Set<TimeInterval>()
+        var seenIDs = Set<UUID>()
         for transaction in transactions {
-            let roundedTimestamp = transaction.roundedTimestamp
-            if !seenTimestamps.contains(roundedTimestamp) {
+            if !seenIDs.contains(transaction.id) {
                 uniqueTransactions.append(transaction)
-                seenTimestamps.insert(roundedTimestamp)
+                seenIDs.insert(transaction.id)
             }
         }
         transactions = uniqueTransactions
@@ -93,7 +76,7 @@ class TransactionManager: ObservableObject {
         // Убираем дубликаты перед сохранением
         removeDuplicates()
         // Сохраняем только уникальные транзакции в локальный кэш в CSV формате
-        let formatted = logStorage.formatCSV(transactions)
+        let formatted = logStorage.formatCacheCSV(transactions)
         logStorage.saveCache(formatted)
     }
     
