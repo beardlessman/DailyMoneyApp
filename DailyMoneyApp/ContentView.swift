@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 struct Toast: Identifiable {
     let id = UUID()
@@ -14,9 +15,11 @@ struct ContentView: View {
     @FocusState private var isCommentFocused: Bool
     @State private var toasts: [Toast] = []
     @State private var showTokenSettings = false
+
+    @AppStorage("google_forms_url") private var googleFormsURL: String = ""
     
-    let categorySuggestions = ["Продукты", "Доставка", "Алкоголь", "Кальян", "Машина", "Платежи", "Для дома", "Здоровье", "Кофе", "Подписки", "Подарки"]
-    
+    let categorySuggestions = ["Продукты", "Доставка", "Алкоголь", "Кальян", "Машина", "Платежи", "Для дома", "Здоровье", "Кофе", "Подписки", "Подарки", "Отдых", "Авиабилеты", "Другое"]
+
     @AppStorage("monthly_amount") private var monthlyAmount: Double = 120000.0
     
     private var MONTHLY_AMOUNT: Double {
@@ -140,14 +143,22 @@ struct ContentView: View {
     }
     
     private func submitForm() {
-        // Если категория не выбрана, подставляем "что-то"
-        let categoryText = comment.isEmpty ? "что-то" : comment
+        // Если категория не выбрана, подставляем "Другое"
+        let categoryText = comment.isEmpty ? "Другое" : comment
+        let amountToSend = amount
+        let commentToSend = categoryText
+        let categoryToSend = extractCategoryFromComment(commentToSend)
         
         // Сохраняем транзакцию
-        transactionManager.addTransaction(amount: amount, category: categoryText)
+        transactionManager.addTransaction(amount: amountToSend, category: categoryText)
+        
+        // Отправляем данные в Google Forms (если URL настроен)
+        Task {
+            await sendToGoogleForm(amount: amountToSend, comment: commentToSend, category: categoryToSend)
+        }
         
         // Формируем сообщение и добавляем тост
-        let toast = Toast(message: "\(amount) \(categoryText)")
+        let toast = Toast(message: "\(amountToSend) \(categoryText)")
         withAnimation {
             toasts.append(toast)
         }
@@ -162,6 +173,64 @@ struct ContentView: View {
             withAnimation {
                 toasts.removeAll { $0.id == toast.id }
             }
+        }
+    }
+    
+    @MainActor
+    private func showToast(_ message: String) {
+        let toast = Toast(message: message)
+        withAnimation {
+            toasts.append(toast)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            withAnimation {
+                toasts.removeAll { $0.id == toast.id }
+            }
+        }
+    }
+
+    private func extractCategoryFromComment(_ comment: String) -> String {
+        let commentLower = comment.lowercased()
+        let orderedSuggestions = categorySuggestions.sorted { $0.count > $1.count }
+        
+        for suggestion in orderedSuggestions {
+            if commentLower.contains(suggestion.lowercased()) {
+                return suggestion
+            }
+        }
+        
+        return comment
+    }
+    
+    private func sendToGoogleForm(amount: String, comment: String, category: String) async {
+        let urlString = googleFormsURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !urlString.isEmpty else { return }
+        guard let url = URL(string: urlString) else {
+            await showToast("Некорректный URL Google Forms")
+            return
+        }
+        
+        var components = URLComponents()
+        components.queryItems = [
+            URLQueryItem(name: "entry.1478941545", value: amount),
+            URLQueryItem(name: "entry.913606663", value: comment),
+            URLQueryItem(name: "entry.2039786247", value: category)
+        ]
+        
+        guard let body = components.percentEncodedQuery else { return }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body.data(using: .utf8)
+        
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                await showToast("Google Forms ответ: \(http.statusCode)")
+            }
+        } catch {
+            await showToast("Ошибка отправки в Google Forms")
         }
     }
 

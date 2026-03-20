@@ -82,7 +82,7 @@ final class TransactionLogStorage: ObservableObject {
                         if transaction.category == "бесплатный день" {
                             result += "0 бесплатный день [\(Int(transaction.timestamp))]\n"
                         } else {
-                            result += "\(transaction.amount) \(transaction.formattedCategory) [\(Int(transaction.timestamp))]\n"
+                            result += "\(transaction.amount) \(transaction.category) [\(Int(transaction.timestamp))]\n"
                         }
                     }
                     
@@ -125,7 +125,7 @@ final class TransactionLogStorage: ObservableObject {
             
             let comment = transaction.category == "бесплатный день"
                 ? "бесплатный день"
-                : transaction.formattedCategory
+                : transaction.category
             
             // Экранируем comment в кавычках (timestamp без кавычек)
             result += "\(timestampISO),\(transaction.amount),\"\(comment)\"\n"

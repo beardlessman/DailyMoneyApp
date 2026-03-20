@@ -177,7 +177,7 @@ struct DayView: View {
             if let dayTransactions = grouped[dayStart], !dayTransactions.isEmpty {
                 ForEach(dayTransactions) { transaction in
                     HStack {
-                        Text("\(transaction.amount) \(transaction.formattedCategory)")
+                        Text("\(transaction.amount) \(transaction.category)")
                             .font(.body)
                             .padding(.horizontal, 8)
                         Spacer()

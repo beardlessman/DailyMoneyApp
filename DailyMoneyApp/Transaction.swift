@@ -46,15 +46,6 @@ struct Transaction: Identifiable, Codable {
         self.timestamp = Transaction.roundTimestamp(timestamp)
     }
     
-    var formattedCategory: String {
-        switch category.lowercased() {
-        case "продукты", "доставка":
-            return "\(category) еда"
-        case "алкоголь", "кальян":
-            return "\(category) алко"
-        default:
-            return category
-        }
-    }
+    
 }
 

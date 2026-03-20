@@ -172,7 +172,7 @@ class TransactionManager: ObservableObject {
                     let dateString = dayFormatter.string(from: dayStart)
                     result += "\(dateString)\n"
                     for transaction in dayTransactions.sorted(by: { $0.date > $1.date }) {
-                        result += "\(transaction.amount) \(transaction.formattedCategory)\n"
+                        result += "\(transaction.amount) \(transaction.category)\n"
                     }
                     result += "\n"
                 }
@@ -267,7 +267,7 @@ class TransactionManager: ObservableObject {
             if let dayTransactions = grouped[dayStart], !dayTransactions.isEmpty {
                 result += "\(dateString)\n"
                 for transaction in dayTransactions {
-                    result += "\(transaction.amount) \(transaction.formattedCategory)\n"
+                    result += "\(transaction.amount) \(transaction.category)\n"
                 }
                 result += "\n"
             }
@@ -352,7 +352,7 @@ class TransactionManager: ObservableObject {
         
         var result = "\(dateString)\n"
         for transaction in dayTransactions {
-            result += "\(transaction.amount) \(transaction.formattedCategory)\n"
+            result += "\(transaction.amount) \(transaction.category)\n"
         }
         
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
