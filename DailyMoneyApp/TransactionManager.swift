@@ -8,7 +8,7 @@ class TransactionManager: ObservableObject {
     @Published var showError: Bool = false
     @Published var isLoading: Bool = true
     
-    private let gistStorage = GistStorage.shared
+    private let logStorage = TransactionLogStorage.shared
     
     init() {
         Task {
@@ -22,9 +22,9 @@ class TransactionManager: ObservableObject {
         }
         
         // Загружаем только из локального кэша
-        if let cachedContent = gistStorage.loadCache() {
+        if let cachedContent = logStorage.loadCache() {
             do {
-                var loadedTransactions = try gistStorage.parseCSV(cachedContent)
+                var loadedTransactions = try logStorage.parseCSV(cachedContent)
                 // Дополнительная проверка на дубликаты (на всякий случай)
                 var uniqueTransactions: [Transaction] = []
                 var seenTimestamps = Set<TimeInterval>()
@@ -93,64 +93,8 @@ class TransactionManager: ObservableObject {
         // Убираем дубликаты перед сохранением
         removeDuplicates()
         // Сохраняем только уникальные транзакции в локальный кэш в CSV формате
-        let formatted = gistStorage.formatCSV(transactions)
-        gistStorage.saveCache(formatted)
-    }
-    
-    func syncWithGist() {
-        Task {
-            await MainActor.run {
-                isLoading = true
-            }
-            
-            do {
-                // Инициализируем Gist, если нужно
-                try await gistStorage.initializeIfNeeded()
-                
-                // Убираем дубликаты из локальных транзакций перед синхронизацией
-                removeDuplicates()
-                
-                // Синхронизируем локальные транзакции с Gist
-                // Метод вернет объединенный список без дубликатов
-                let syncedTransactions = try await gistStorage.syncWithGist(localTransactions: transactions)
-                
-                // Сохраняем максимальный timestamp из синхронизированных транзакций
-                let maxTimestamp = syncedTransactions.map { $0.timestamp }.max() ?? 0
-                UserDefaults.standard.set(maxTimestamp, forKey: "last_sync_timestamp")
-                
-                // Сохраняем новый список локально
-                await MainActor.run {
-                    transactions = syncedTransactions
-                    removeDuplicates()
-                    isLoading = false
-                }
-                
-                // Сохраняем синхронизированные транзакции в кэш
-                saveToCache()
-            } catch let error as GistStorageError {
-                await MainActor.run {
-                    errorMessage = error.errorDescription
-                    showError = true
-                    isLoading = false
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = "Неизвестная ошибка: \(error.localizedDescription)"
-                    showError = true
-                    isLoading = false
-                }
-            }
-        }
-    }
-    
-    func hasUnsynchronizedTransactions() -> Bool {
-        let lastSyncTimestamp = UserDefaults.standard.double(forKey: "last_sync_timestamp")
-        // Если никогда не синхронизировали, но есть транзакции - показываем кнопку
-        if lastSyncTimestamp == 0 {
-            return !transactions.isEmpty
-        }
-        // Проверяем, есть ли транзакции с timestamp больше последнего синхронизированного
-        return transactions.contains { $0.timestamp > lastSyncTimestamp }
+        let formatted = logStorage.formatCSV(transactions)
+        logStorage.saveCache(formatted)
     }
     
     private func parseTransactionsFromLog(_ logText: String) {
@@ -334,21 +278,37 @@ class TransactionManager: ObservableObject {
     }
     
     func getLogFileURL() -> URL? {
-        // Создаем временный файл в Markdown формате для экспорта
-        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            return nil
-        }
-        let exportURL = appSupport.appendingPathComponent("DailyMoneyLog_export.md")
+        // Создаем CSV-файл в temporaryDirectory для шаринга.
+        // applicationSupportDirectory в некоторых сценариях Canvas/preview может приводить к проблемам доступа для UIActivityViewController.
+        let exportDir = FileManager.default.temporaryDirectory
+
+        let now = Date()
+        let monthFormatter = DateFormatter()
+        monthFormatter.locale = Locale(identifier: "ru_RU")
+        monthFormatter.dateFormat = "LLLL"
+        let monthName = monthFormatter.string(from: now)
+        let year = Calendar.current.component(.year, from: now)
         
-        // Форматируем транзакции в Markdown формат
-        let markdownContent = gistStorage.formatTransactions(transactions)
+        // Санитизация для имени файла: заменяем пробелы/опасные символы на "_"
+        let safeMonthName = monthName
+            .replacingOccurrences(of: " ", with: "_")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "\\", with: "_")
+        
+        let exportFileName = "DailyMoneyLog_\(safeMonthName)_\(year).csv"
+        let exportURL = exportDir.appendingPathComponent(exportFileName)
+        
+        // Экспортируем текущий месяц (под шаблон "месяц_год")
+        let exportTransactions = getTransactionsForCurrentMonth()
+        let csvContent = logStorage.formatCSV(exportTransactions)
         
         // Сохраняем во временный файл
         do {
-            try markdownContent.write(to: exportURL, atomically: true, encoding: .utf8)
+            try csvContent.write(to: exportURL, atomically: true, encoding: .utf8)
+            print("✅ Export CSV created at: \(exportURL.path)")
             return exportURL
         } catch {
-            print("❌ Failed to create export file: \(error)")
+            print("❌ Failed to create export CSV file: \(error)")
             return nil
         }
     }
@@ -358,17 +318,6 @@ class TransactionManager: ObservableObject {
         
         // Очищаем локальный кэш
         saveToCache()
-        
-        Task {
-            do {
-                try await gistStorage.overwriteLog(transactions: [])
-            } catch let error as GistStorageError {
-                await MainActor.run {
-                    errorMessage = error.errorDescription
-                    showError = true
-                }
-            }
-        }
     }
     
     func getTodaySpentAmount() -> Double {

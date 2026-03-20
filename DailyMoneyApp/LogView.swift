@@ -4,8 +4,8 @@ import UIKit
 struct LogView: View {
     @EnvironmentObject var navigationManager: NavigationManager
     @EnvironmentObject var transactionManager: TransactionManager
-    @State private var showGistSettings = false
     @State private var hasSwitchedToAdd = false
+    @State private var showLogSettings = false
     
     private var groupedTransactions: [Date: [Transaction]] {
         transactionManager.getGroupedTransactions()
@@ -69,27 +69,6 @@ struct LogView: View {
                     .padding(.bottom, 100) // Отступ снизу для кнопки синхронизации
                 }
                 
-                // Кнопка синхронизации справа внизу (только если есть несинхронизированные транзакции)
-                if transactionManager.hasUnsynchronizedTransactions() {
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            Button(action: {
-                                transactionManager.syncWithGist()
-                            }) {
-                                Image(systemName: "arrow.clockwise.circle.fill")
-                                    .font(.system(size: 50))
-                                    .foregroundColor(.blue)
-                                    .background(Color.white)
-                                    .clipShape(Circle())
-                                    .shadow(radius: 5)
-                            }
-                            .padding(.trailing, 20)
-                            .padding(.bottom, 20)
-                        }
-                    }
-                }
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
@@ -97,11 +76,12 @@ struct LogView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button {
-                        showGistSettings = true
+                        showLogSettings = true
                     } label: {
                         Image(systemName: "gearshape")
                             .foregroundColor(.blue)
                     }
+                    .buttonStyle(.plain)
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -125,8 +105,8 @@ struct LogView: View {
                         .transaction { $0.animation = nil }
                 }
             }
-            .sheet(isPresented: $showGistSettings) {
-                GistSettingsView()
+            .sheet(isPresented: $showLogSettings) {
+                LocalLogSettingsView()
                     .environmentObject(transactionManager)
             }
         }

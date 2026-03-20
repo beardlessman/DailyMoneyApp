@@ -14,7 +14,6 @@ struct ContentView: View {
     @FocusState private var isCommentFocused: Bool
     @State private var toasts: [Toast] = []
     @State private var showTokenSettings = false
-    @State private var hasSwitchedToLog = false
     
     let categorySuggestions = ["Продукты", "Доставка", "Алкоголь", "Кальян", "Машина", "Платежи", "Для дома", "Здоровье", "Кофе", "Подписки", "Подарки"]
     
@@ -323,24 +322,15 @@ struct ContentView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Image(systemName: "list.bullet")
-                        .foregroundColor(.blue)
-                        .background(Color.clear)
-                        .contentShape(Rectangle())
-                        .buttonStyle(.plain)
-                        .highPriorityGesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { _ in
-                                    if !hasSwitchedToLog {
-                                        hasSwitchedToLog = true
-                                        navigationManager.switchToLog()
-                                    }
-                                }
-                                .onEnded { _ in
-                                    hasSwitchedToLog = false
-                                }
-                        )
-                        .transaction { $0.animation = nil }
+                    Button {
+                        navigationManager.switchToLog()
+                    } label: {
+                        Image(systemName: "list.bullet")
+                            .foregroundColor(.blue)
+                            .background(Color.clear)
+                    }
+                    .buttonStyle(.plain)
+                    .transaction { $0.animation = nil }
                 }
             }
             .sheet(isPresented: $showTokenSettings) {
@@ -353,4 +343,6 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
+        .environmentObject(NavigationManager())
+        .environmentObject(TransactionManager())
 }
