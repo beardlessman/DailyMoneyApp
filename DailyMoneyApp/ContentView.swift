@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import UIKit
 
 struct Toast: Identifiable {
     let id = UUID()
@@ -14,7 +15,7 @@ struct ContentView: View {
     @FocusState private var isAmountFocused: Bool
     @FocusState private var isCommentFocused: Bool
     @State private var toasts: [Toast] = []
-    @State private var showTokenSettings = false
+    @State private var focusTaskGeneration = 0
 
     @AppStorage("google_forms_url") private var googleFormsURL: String = ""
     
@@ -125,23 +126,45 @@ struct ContentView: View {
         }
     }
     
-    private func setFocusToAmountField() {
-        // Устанавливаем фокус на поле суммы с несколькими попытками для надежности
-        DispatchQueue.main.async {
-            self.isAmountFocused = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            self.isAmountFocused = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            self.isAmountFocused = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            // Финальная попытка для надежности
-            self.isAmountFocused = true
+    private func openBudgetSettings() {
+        clearFocus()
+        navigationManager.showBudgetSettings = true
+    }
+
+    private func clearFocus() {
+        focusTaskGeneration += 1
+        isAmountFocused = false
+        isCommentFocused = false
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+    }
+
+    private func scheduleFocusIfOnForm() {
+        guard navigationManager.selectedTab == 1, !navigationManager.showBudgetSettings else { return }
+
+        focusTaskGeneration += 1
+        let generation = focusTaskGeneration
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            guard generation == focusTaskGeneration,
+                  navigationManager.selectedTab == 1,
+                  !navigationManager.showBudgetSettings else { return }
+            isAmountFocused = true
         }
     }
-    
+
+    private func scrollToAddButton(_ proxy: ScrollViewProxy) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            withAnimation {
+                proxy.scrollTo("addButton", anchor: .bottom)
+            }
+        }
+    }
+
     private func submitForm() {
         // Если категория не выбрана, подставляем "Другое"
         let categoryText = comment.isEmpty ? "Другое" : comment
@@ -166,7 +189,7 @@ struct ContentView: View {
         // Очистка формы после сабмита
         amount = ""
         comment = "Продукты"
-        setFocusToAmountField()
+        scheduleFocusIfOnForm()
         
         // Автоматически удаляем тост через 3 секунды
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
@@ -235,176 +258,166 @@ struct ContentView: View {
     }
 
     var body: some View {
-        NavigationView {
-            ZStack {
-                VStack(spacing: 24) {
-                    // Отображение доступной суммы
-                    // Показываем только после загрузки транзакций
-                    if transactionManager.isLoading && transactionManager.transactions.isEmpty {
-                        // Показываем placeholder только при первой загрузке (когда транзакций еще нет)
-                        Text("...")
-                            .font(.system(size: 30, weight: .bold))
-                            .foregroundColor(.gray)
+        ZStack {
+            VStack(spacing: 24) {
+                if transactionManager.isLoading && transactionManager.transactions.isEmpty {
+                    Text("...")
+                        .font(.system(size: 30, weight: .bold))
+                        .foregroundColor(.gray)
+                        .frame(maxWidth: .infinity)
+                        .multilineTextAlignment(.center)
+                        .padding(.bottom, 8)
+                } else {
+                    Button(action: openBudgetSettings) {
+                        Text("\(Int(availableAmount))")
+                            .font(.system(size: 50, weight: .black))
+                            .foregroundColor(amountColor)
                             .frame(maxWidth: .infinity)
                             .multilineTextAlignment(.center)
-                            .padding(.bottom, 8)
-                    } else {
-                        Button(action: {
-                            showTokenSettings = true
-                        }) {
-                            Text("\(Int(availableAmount)) RSD")
-                                .font(.system(size: 30, weight: .bold))
-                                .foregroundColor(amountColor)
-                                .frame(maxWidth: .infinity)
-                                .multilineTextAlignment(.center)
-                                .padding(.bottom, 8)
-                        }
-                    }
-                    
-                ZStack(alignment: .trailing) {
-                    TextField("Сумма", text: $amount)
-                        .keyboardType(.numberPad)
-                        .font(.system(size: 28))
-                        .multilineTextAlignment(.center)
-                        .padding()
-                        .focused($isAmountFocused)
-                        .submitLabel(.next)
-                        .onSubmit {
-                            isAmountFocused = false
-                            isCommentFocused = true
-                        }
-                    
-                    if !amount.isEmpty {
-                        Button(action: {
-                            amount = ""
-                        }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.gray)
-                                .padding(.trailing, 16)
-                        }
-                    }
-                }
-                .background(Color(.systemGray6))
-                .cornerRadius(12)
-                .padding(.horizontal, 32)
-
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(categorySuggestions, id: \.self) { suggestion in
-                            Button(action: {
-                                comment = suggestion
-                            }) {
-                                Text(suggestion)
-                                    .font(.system(size: 16))
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    .background(comment == suggestion ? Color.blue : Color(.systemGray5))
-                                    .foregroundColor(comment == suggestion ? .white : .primary)
-                                    .cornerRadius(20)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 32)
-                }
-
-                ZStack(alignment: .trailing) {
-                    TextField("Категория", text: $comment)
-                        .font(.system(size: 20))
-                        .padding()
-                        .focused($isCommentFocused)
-                        .submitLabel(.done)
-                        .onSubmit {
-                            isCommentFocused = false
-                        }
-                    
-                    if !comment.isEmpty {
-                        Button(action: {
-                            comment = ""
-                        }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.gray)
-                                .padding(.trailing, 16)
-                        }
-                    }
-                }
-                .background(Color(.systemGray6))
-                .cornerRadius(12)
-                .padding(.horizontal, 32)
-
-                Button(action: submitForm) {
-                    Text("Добавить")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .cornerRadius(12)
-                }
-                .padding(.horizontal, 32)
-                .disabled(amount.isEmpty)
-
-                Spacer()
-            }
-            .padding(.top, 100)
-            .onAppear {
-                // Устанавливаем фокус при появлении экрана
-                setFocusToAmountField()
-            }
-            .onChange(of: navigationManager.selectedTab) { newValue in
-                if newValue == 0 {
-                    // Возврат на экран формы - ставим фокус с несколькими попытками
-                    setFocusToAmountField()
-                } else {
-                    // Переход в лог - убираем фокус
-                    isAmountFocused = false
-                    isCommentFocused = false
-                }
-            }
-            .task(id: navigationManager.selectedTab) {
-                // Дополнительная проверка при изменении таба
-                if navigationManager.selectedTab == 0 {
-                    try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 секунды
-                    setFocusToAmountField()
-                }
-            }
-            
-            // Всплывающие сообщения сверху в стопке
-            if !toasts.isEmpty {
-                VStack(spacing: 8) {
-                    ForEach(toasts) { toast in
-                        Text(toast.message)
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.primary)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 12)
-                            .background(Color(.systemBackground))
-                            .cornerRadius(10)
-                            .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-                    Spacer()
-                }
-                .padding(.top, 50)
-            }
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        navigationManager.switchToLog()
-                    } label: {
-                        Image(systemName: "list.bullet")
-                            .foregroundColor(.blue)
-                            .background(Color.clear)
                     }
                     .buttonStyle(.plain)
-                    .transaction { $0.animation = nil }
+                }
+
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 24) {
+                        ZStack(alignment: .trailing) {
+                            TextField("Сумма", text: $amount)
+                                .keyboardType(.numberPad)
+                                .font(.system(size: 28))
+                                .multilineTextAlignment(.center)
+                                .padding()
+                                .focused($isAmountFocused)
+                                .submitLabel(.next)
+                                .onSubmit {
+                                    isAmountFocused = false
+                                    isCommentFocused = true
+                                }
+
+                            if !amount.isEmpty {
+                                Button(action: {
+                                    amount = ""
+                                }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.gray)
+                                        .padding(.trailing, 16)
+                                }
+                            }
+                        }
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
+                        .padding(.horizontal, 32)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 12) {
+                                ForEach(categorySuggestions, id: \.self) { suggestion in
+                                    Button(action: {
+                                        comment = suggestion
+                                    }) {
+                                        Text(suggestion)
+                                            .font(.system(size: 16))
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 8)
+                                            .background(comment == suggestion ? Color.blue : Color(.systemGray5))
+                                            .foregroundColor(comment == suggestion ? .white : .primary)
+                                            .cornerRadius(20)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 32)
+                        }
+
+                        ZStack(alignment: .trailing) {
+                            TextField("Категория", text: $comment)
+                                .font(.system(size: 20))
+                                .padding()
+                                .focused($isCommentFocused)
+                                .submitLabel(.done)
+                                .onSubmit {
+                                    isCommentFocused = false
+                                }
+
+                            if !comment.isEmpty {
+                                Button(action: {
+                                    comment = ""
+                                }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.gray)
+                                        .padding(.trailing, 16)
+                                }
+                            }
+                        }
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
+                        .padding(.horizontal, 32)
+
+                        Button(action: submitForm) {
+                            Text("Добавить")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.blue)
+                                .cornerRadius(12)
+                        }
+                        .padding(.horizontal, 32)
+                        .disabled(amount.isEmpty)
+                        .id("addButton")
+                    }
+                    .padding(.bottom, 20)
+                }
+                .scrollDismissesKeyboard(.never)
+                .scrollBounceBehavior(.basedOnSize)
+                .onChange(of: isAmountFocused) { _, focused in
+                    if focused {
+                        scrollToAddButton(proxy)
+                    }
+                }
+                .onChange(of: isCommentFocused) { _, focused in
+                    if focused {
+                        scrollToAddButton(proxy)
+                    }
+                }
                 }
             }
-            .sheet(isPresented: $showTokenSettings) {
-                TokenSettingsView()
-                    .environmentObject(transactionManager)
+            .padding(.top, 80)
+
+            if !toasts.isEmpty {
+                    VStack(spacing: 8) {
+                        ForEach(toasts) { toast in
+                            Text(toast.message)
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.primary)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 12)
+                                .background(Color(.systemBackground))
+                                .cornerRadius(10)
+                                .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .top)
+                    .padding(.top, 50)
+                    .allowsHitTesting(false)
+            }
+        }
+        .onAppear {
+            if navigationManager.selectedTab == 1 {
+                scheduleFocusIfOnForm()
+            }
+        }
+        .onChange(of: navigationManager.selectedTab) { _, newValue in
+            if newValue == 1 {
+                scheduleFocusIfOnForm()
+            } else {
+                clearFocus()
+            }
+        }
+        .onChange(of: navigationManager.showBudgetSettings) { _, isShowing in
+            if isShowing {
+                clearFocus()
+            } else if navigationManager.selectedTab == 1 {
+                scheduleFocusIfOnForm()
             }
         }
     }
