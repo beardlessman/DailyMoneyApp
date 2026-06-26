@@ -4,6 +4,19 @@ import UIKit
 struct LogView: View {
     @EnvironmentObject var navigationManager: NavigationManager
     @EnvironmentObject var transactionManager: TransactionManager
+    @AppStorage("monthly_amount") private var monthlyAmount: Double = 120000.0
+
+    private var effectiveMonthlyAmount: Double {
+        monthlyAmount > 0 ? monthlyAmount : 120000.0
+    }
+
+    private var monthSpentAmount: Double {
+        transactionManager.getMonthSpentAmount()
+    }
+
+    private var remainingUntilEndOfMonth: Double {
+        effectiveMonthlyAmount - monthSpentAmount
+    }
 
     private var groupedTransactions: [Date: [Transaction]] {
         transactionManager.getGroupedTransactions()
@@ -24,16 +37,21 @@ struct LogView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 if hasTransactions {
-                    HStack {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text(transactionManager.getMonthString())
                             .font(.title2)
                             .fontWeight(.bold)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 10)
-                        Spacer()
-                        Text("\(Int(transactionManager.getMonthSpentAmount())) RSD")
-                            .font(.title3)
+
+                        Text("\(Int(monthSpentAmount)) RSD потрачено")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+
+                        Text("\(Int(remainingUntilEndOfMonth)) RSD до конца месяца")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
                     }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 10)
                     .contextMenu {
                         Button(action: {
                             let logText = transactionManager.getFormattedLog()

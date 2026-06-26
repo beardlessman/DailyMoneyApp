@@ -2,7 +2,6 @@ import SwiftUI
 import UIKit
 
 struct TokenSettingsView: View {
-    @EnvironmentObject var transactionManager: TransactionManager
     @Environment(\.dismiss) var dismiss
     @State private var showError: Bool = false
     @State private var errorMessage: String = ""
@@ -12,20 +11,10 @@ struct TokenSettingsView: View {
         let savedAmount = UserDefaults.standard.double(forKey: "monthly_amount")
         return savedAmount > 0 ? savedAmount : 120000.0
     }
-
-    private var remainingUntilEndOfMonth: Double {
-        defaultMonthlyAmount - transactionManager.getMonthSpentAmount()
-    }
     
     var body: some View {
         NavigationView {
             Form {
-                Section {
-                    Text("\(Int(remainingUntilEndOfMonth)) RSD до конца месяца")
-                } header: {
-                    Text("Остаток")
-                }
-
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Бюджет на месяц")
@@ -45,10 +34,6 @@ struct TokenSettingsView: View {
                         }
                     }
                     .padding(.vertical, 4)
-                } header: {
-                    Text("Бюджет")
-                } footer: {
-                    Text("Текущее значение: \(Int(defaultMonthlyAmount)) RSD")
                 }
                 
             }
@@ -106,6 +91,5 @@ struct TokenSettingsView: View {
 
 #Preview {
     TokenSettingsView()
-        .environmentObject(TransactionManager())
 }
 
