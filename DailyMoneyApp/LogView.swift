@@ -124,6 +124,7 @@ struct DayView: View {
                     .padding(.horizontal, 8)
             }
         }
+        .padding(.bottom, 16)
     }
 }
 
