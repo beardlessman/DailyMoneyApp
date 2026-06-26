@@ -121,7 +121,7 @@ struct ContentView: View {
         } else if available < 0 {
             return .red
         } else {
-            return .black
+            return .primary
         }
     }
     
