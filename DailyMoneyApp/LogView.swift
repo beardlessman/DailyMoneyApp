@@ -69,7 +69,6 @@ struct LogView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 10)
-            .padding(.top, 24)
             .padding(.bottom, 100)
         }
     }

@@ -380,7 +380,7 @@ struct ContentView: View {
                 }
                 }
             }
-            .padding(.top, 80)
+            .padding(.top, 56)
 
             if !toasts.isEmpty {
                     VStack(spacing: 8) {
