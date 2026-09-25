@@ -8,10 +8,10 @@ struct MainPagerView: View {
         NavigationStack {
             TabView(selection: $navigationManager.selectedTab) {
                 LogView()
-                    .tag(0)
+                    .tag(NavigationManager.logTab)
 
                 ContentView()
-                    .tag(1)
+                    .tag(NavigationManager.formTab)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .animation(.easeInOut(duration: 0.3), value: navigationManager.selectedTab)
@@ -32,7 +32,7 @@ struct MainPagerView: View {
     @ToolbarContentBuilder
     private var mainToolbar: some ToolbarContent {
         ToolbarItem(placement: .navigationBarLeading) {
-            if navigationManager.selectedTab == 1 {
+            if navigationManager.selectedTab == NavigationManager.formTab {
                 Button(action: navigationManager.switchToLog) {
                     Image(systemName: "list.bullet")
                         .foregroundColor(.blue)
@@ -49,7 +49,7 @@ struct MainPagerView: View {
             }
         }
 
-        if navigationManager.selectedTab == 0 {
+        if navigationManager.selectedTab == NavigationManager.logTab {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: navigationManager.switchToAdd) {
                     Image(systemName: "arrow.right")

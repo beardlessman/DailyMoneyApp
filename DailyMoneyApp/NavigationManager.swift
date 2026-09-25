@@ -3,8 +3,10 @@ import Combine
 import SwiftUI
 
 class NavigationManager: ObservableObject {
-    /// 0 — журнал (слева), 1 — форма ввода (справа)
-    @Published var selectedTab: Int = 1
+    static let logTab = "log"
+    static let formTab = "form"
+
+    @Published var selectedTab: String = formTab
     @Published var showBudgetSettings = false
     @Published var showLogSettings = false
 
@@ -12,7 +14,7 @@ class NavigationManager: ObservableObject {
         withAnimation(.easeInOut(duration: 0.3)) {
             showBudgetSettings = false
             showLogSettings = false
-            selectedTab = 0
+            selectedTab = Self.logTab
         }
     }
 
@@ -20,7 +22,7 @@ class NavigationManager: ObservableObject {
         withAnimation(.easeInOut(duration: 0.3)) {
             showBudgetSettings = false
             showLogSettings = false
-            selectedTab = 1
+            selectedTab = Self.formTab
         }
     }
 }

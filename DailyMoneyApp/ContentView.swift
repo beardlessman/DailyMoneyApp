@@ -144,14 +144,14 @@ struct ContentView: View {
     }
 
     private func scheduleFocusIfOnForm() {
-        guard navigationManager.selectedTab == 1, !navigationManager.showBudgetSettings else { return }
+        guard navigationManager.selectedTab == NavigationManager.formTab, !navigationManager.showBudgetSettings else { return }
 
         focusTaskGeneration += 1
         let generation = focusTaskGeneration
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             guard generation == focusTaskGeneration,
-                  navigationManager.selectedTab == 1,
+                  navigationManager.selectedTab == NavigationManager.formTab,
                   !navigationManager.showBudgetSettings else { return }
             isAmountFocused = true
         }
@@ -402,12 +402,12 @@ struct ContentView: View {
             }
         }
         .onAppear {
-            if navigationManager.selectedTab == 1 {
+            if navigationManager.selectedTab == NavigationManager.formTab {
                 scheduleFocusIfOnForm()
             }
         }
         .onChange(of: navigationManager.selectedTab) { _, newValue in
-            if newValue == 1 {
+            if newValue == NavigationManager.formTab {
                 scheduleFocusIfOnForm()
             } else {
                 clearFocus()
@@ -416,7 +416,7 @@ struct ContentView: View {
         .onChange(of: navigationManager.showBudgetSettings) { _, isShowing in
             if isShowing {
                 clearFocus()
-            } else if navigationManager.selectedTab == 1 {
+            } else if navigationManager.selectedTab == NavigationManager.formTab {
                 scheduleFocusIfOnForm()
             }
         }
