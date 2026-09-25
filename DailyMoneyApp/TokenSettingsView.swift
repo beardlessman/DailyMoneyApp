@@ -2,16 +2,12 @@ import SwiftUI
 import UIKit
 
 struct TokenSettingsView: View {
+    @EnvironmentObject var budgetManager: BudgetManager
     @Environment(\.dismiss) var dismiss
     @State private var showError: Bool = false
     @State private var errorMessage: String = ""
     @State private var monthlyAmountInput: String = ""
-    
-    private var defaultMonthlyAmount: Double {
-        let savedAmount = UserDefaults.standard.double(forKey: "monthly_amount")
-        return savedAmount > 0 ? savedAmount : 120000.0
-    }
-    
+
     var body: some View {
         NavigationView {
             Form {
@@ -19,23 +15,22 @@ struct TokenSettingsView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Бюджет на месяц")
                             .font(.headline)
-                        
+
                         Text("Укажите ваш месячный бюджет в RSD. Бюджет на день рассчитывается автоматически раз в календарный день.")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        
+
                         HStack {
                             TextField("120000", text: $monthlyAmountInput)
                                 .keyboardType(.numberPad)
                                 .textContentType(.none)
-                            
+
                             Text("RSD")
                                 .foregroundColor(.secondary)
                         }
                     }
                     .padding(.vertical, 4)
                 }
-                
             }
             .navigationTitle("Настройки")
             .navigationBarTitleDisplayMode(.inline)
@@ -45,7 +40,7 @@ struct TokenSettingsView: View {
                         dismiss()
                     }
                 }
-                
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Сохранить") {
                         saveSettings()
@@ -60,36 +55,28 @@ struct TokenSettingsView: View {
             }
         }
         .onAppear {
-            // Устанавливаем текущее значение бюджета
-            monthlyAmountInput = String(Int(defaultMonthlyAmount))
+            monthlyAmountInput = String(Int(budgetManager.monthlyAmount))
         }
     }
-    
+
     private func saveSettings() {
-        // Сохраняем бюджет на месяц
-        if !monthlyAmountInput.isEmpty {
-            if let amount = Double(monthlyAmountInput), amount > 0 {
-                let oldAmount = UserDefaults.standard.double(forKey: "monthly_amount")
-                UserDefaults.standard.set(amount, forKey: "monthly_amount")
-                
-                // Если бюджет изменился, сбрасываем дневной бюджет для пересчета
-                if oldAmount != amount {
-                    UserDefaults.standard.removeObject(forKey: "daily_budget")
-                    UserDefaults.standard.removeObject(forKey: "daily_budget_date")
-                    UserDefaults.standard.removeObject(forKey: "last_monthly_amount_for_budget")
-                }
-            } else {
-                errorMessage = "Введите корректную сумму бюджета"
-                showError = true
-                return
-            }
+        guard !monthlyAmountInput.isEmpty else {
+            dismiss()
+            return
         }
-        
+
+        guard let amount = Double(monthlyAmountInput), amount > 0 else {
+            errorMessage = "Введите корректную сумму бюджета"
+            showError = true
+            return
+        }
+
+        budgetManager.saveMonthlyAmount(amount)
         dismiss()
     }
 }
 
 #Preview {
     TokenSettingsView()
+        .environmentObject(BudgetManager())
 }
-

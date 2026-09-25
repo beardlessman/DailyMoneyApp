@@ -3,6 +3,7 @@ import SwiftUI
 struct MainPagerView: View {
     @EnvironmentObject var navigationManager: NavigationManager
     @EnvironmentObject var transactionManager: TransactionManager
+    @EnvironmentObject var budgetManager: BudgetManager
 
     var body: some View {
         NavigationStack {
@@ -20,7 +21,7 @@ struct MainPagerView: View {
             .toolbar { mainToolbar }
             .sheet(isPresented: $navigationManager.showBudgetSettings) {
                 TokenSettingsView()
-                    .environmentObject(transactionManager)
+                    .environmentObject(budgetManager)
             }
             .sheet(isPresented: $navigationManager.showLogSettings) {
                 LocalLogSettingsView()

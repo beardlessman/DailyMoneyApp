@@ -4,18 +4,14 @@ import UIKit
 struct LogView: View {
     @EnvironmentObject var navigationManager: NavigationManager
     @EnvironmentObject var transactionManager: TransactionManager
-    @AppStorage("monthly_amount") private var monthlyAmount: Double = 120000.0
-
-    private var effectiveMonthlyAmount: Double {
-        monthlyAmount > 0 ? monthlyAmount : 120000.0
-    }
+    @EnvironmentObject var budgetManager: BudgetManager
 
     private var monthSpentAmount: Double {
         transactionManager.getMonthSpentAmount()
     }
 
     private var remainingUntilEndOfMonth: Double {
-        effectiveMonthlyAmount - monthSpentAmount
+        budgetManager.remainingUntilEndOfMonth(monthSpent: monthSpentAmount)
     }
 
     private var groupedTransactions: [Date: [Transaction]] {
@@ -149,4 +145,5 @@ struct DayView: View {
     LogView()
         .environmentObject(NavigationManager())
         .environmentObject(TransactionManager())
+        .environmentObject(BudgetManager())
 }
