@@ -34,28 +34,23 @@ struct ContentView: View {
         // Проверяем, нужно ли пересчитать дневной бюджет
         let lastCalculationDate = UserDefaults.standard.object(forKey: "daily_budget_date") as? Date
         let lastMonthlyAmount = UserDefaults.standard.double(forKey: "last_monthly_amount_for_budget")
-        let today6AM = getToday6AM()
         let today = calendar.startOfDay(for: now)
         
         // Пересчитываем, если:
         // 1. Бюджет никогда не рассчитывался
         // 2. Бюджет рассчитывался не сегодня
-        // 3. Бюджет рассчитывался сегодня, но до 6 утра, а сейчас уже после 6 утра
-        // 4. Месячный бюджет изменился с момента последнего расчета
+        // 3. Месячный бюджет изменился с момента последнего расчета
         let shouldRecalculate: Bool
         if let lastDate = lastCalculationDate {
             let lastDateDay = calendar.startOfDay(for: lastDate)
             if lastDateDay < today {
                 // Бюджет рассчитывался вчера или раньше
                 shouldRecalculate = true
-            } else if lastDateDay == today && lastDate < today6AM && now >= today6AM {
-                // Бюджет рассчитывался сегодня до 6 утра, а сейчас уже после 6 утра
-                shouldRecalculate = true
             } else if abs(lastMonthlyAmount - MONTHLY_AMOUNT) > 0.01 {
                 // Месячный бюджет изменился
                 shouldRecalculate = true
             } else {
-                // Бюджет уже рассчитан сегодня после 6 утра и месячный бюджет не изменился
+                // Бюджет уже рассчитан сегодня и месячный бюджет не изменился
                 shouldRecalculate = false
             }
         } else {
@@ -101,16 +96,6 @@ struct ContentView: View {
         // Доступная сумма = дневной бюджет - траты сегодня
         let todaySpent = transactionManager.getTodaySpentAmount()
         return dailyBudget - todaySpent
-    }
-    
-    private func getToday6AM() -> Date {
-        let calendar = Calendar.current
-        let now = Date()
-        var components = calendar.dateComponents([.year, .month, .day], from: now)
-        components.hour = 6
-        components.minute = 0
-        components.second = 0
-        return calendar.date(from: components) ?? now
     }
     
     private var amountColor: Color {

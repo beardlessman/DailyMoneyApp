@@ -20,7 +20,7 @@ struct TokenSettingsView: View {
                         Text("Бюджет на месяц")
                             .font(.headline)
                         
-                        Text("Укажите ваш месячный бюджет в RSD. Бюджет на день рассчитывается автоматически в 6 утра.")
+                        Text("Укажите ваш месячный бюджет в RSD. Бюджет на день рассчитывается автоматически раз в календарный день.")
                             .font(.caption)
                             .foregroundColor(.secondary)
                         
