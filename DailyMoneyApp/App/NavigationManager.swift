@@ -1,6 +1,5 @@
 import Foundation
 import Combine
-import SwiftUI
 
 class NavigationManager: ObservableObject {
     static let logTab = "log"

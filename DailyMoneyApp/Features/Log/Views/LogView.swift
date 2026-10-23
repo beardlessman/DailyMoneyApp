@@ -2,7 +2,6 @@ import SwiftUI
 import UIKit
 
 struct LogView: View {
-    @EnvironmentObject var navigationManager: NavigationManager
     @EnvironmentObject var transactionManager: TransactionManager
     @EnvironmentObject var budgetManager: BudgetManager
 
@@ -72,7 +71,6 @@ struct LogView: View {
 
 #Preview {
     LogView()
-        .environmentObject(NavigationManager())
         .environmentObject(TransactionManager())
         .environmentObject(BudgetManager())
 }

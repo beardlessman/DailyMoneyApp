@@ -1,5 +1,4 @@
 import SwiftUI
-import Foundation
 import UIKit
 
 struct Toast: Identifiable {
@@ -91,14 +90,14 @@ struct ContentView: View {
 
         transactionManager.addTransaction(amount: amountToSend, category: categoryText)
 
-        Task {
+        Task { @MainActor in
             let result = await GoogleFormsService.send(
                 urlString: googleFormsURL,
                 amount: amountToSend,
                 comment: commentToSend,
                 category: categoryToSend
             )
-            await handleGoogleFormsResult(result)
+            handleGoogleFormsResult(result)
         }
 
         let toast = Toast(message: "\(amountToSend) \(categoryText)")

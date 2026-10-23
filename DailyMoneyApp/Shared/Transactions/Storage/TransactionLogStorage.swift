@@ -1,8 +1,7 @@
 import Foundation
-import Combine
 import CryptoKit
 
-final class TransactionLogStorage: ObservableObject {
+final class TransactionLogStorage {
     static let shared = TransactionLogStorage()
     
     private let cacheFileName = "DailyMoneyLog_cache.csv"
@@ -45,65 +44,6 @@ final class TransactionLogStorage: ObservableObject {
         }
         try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
         return appSupport.appendingPathComponent(cacheFileName)
-    }
-    
-    // MARK: - Formatting for export / display
-    
-    func formatTransactions(_ transactions: [Transaction]) -> String {
-        let calendar = Calendar.current
-        let groupedByMonth = Dictionary(grouping: transactions) { transaction in
-            calendar.date(from: calendar.dateComponents([.year, .month], from: transaction.date))!
-        }
-        
-        var result = ""
-        let monthFormatter = DateFormatter()
-        monthFormatter.locale = Locale(identifier: "ru_RU")
-        monthFormatter.dateFormat = "LLLL"
-        
-        let dayFormatter = DateFormatter()
-        dayFormatter.locale = Locale(identifier: "ru_RU")
-        dayFormatter.dateFormat = "dd.MM.yyyy"
-        
-        for month in groupedByMonth.keys.sorted(by: >) {
-            let monthTransactions = groupedByMonth[month]!
-            let monthSum = monthTransactions.reduce(0.0) { total, t in
-                total + (Double(t.amount) ?? 0.0)
-            }
-            
-            result += "\(monthFormatter.string(from: month).capitalized) - \(Int(monthSum))\n\n"
-            
-            let groupedByDay = Dictionary(grouping: monthTransactions) { transaction in
-                calendar.startOfDay(for: transaction.date)
-            }
-            
-            let today = calendar.startOfDay(for: Date())
-            let allDays = groupedByDay.keys
-                .filter { dayStart in dayStart <= today }
-                .sorted(by: >)
-            
-            for dayStart in allDays {
-                let dateString = dayFormatter.string(from: dayStart)
-                
-                if let dayTransactions = groupedByDay[dayStart] {
-                    result += "\(dateString)\n"
-                    
-                    // "бесплатный день" всегда первым, остальное по убыванию даты
-                    let sortedTransactions = dayTransactions.sorted { t1, t2 in
-                        if t1.category == "бесплатный день" { return true }
-                        if t2.category == "бесплатный день" { return false }
-                        return t1.date > t2.date
-                    }
-                    
-                    for transaction in sortedTransactions {
-                        result += "\(transaction.amount) \(transaction.category) [\(dateString)]\n"
-                    }
-                    
-                    result += "\n"
-                }
-            }
-        }
-        
-        return result.trimmingCharacters(in: .whitespaces) + "\n"
     }
     
     // MARK: - CSV (used for local cache)

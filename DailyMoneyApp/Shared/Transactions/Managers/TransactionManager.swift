@@ -1,27 +1,23 @@
 import Foundation
 import Combine
-import SwiftUI
 
 class TransactionManager: ObservableObject {
     @Published var transactions: [Transaction] = []
-    @Published var errorMessage: String?
-    @Published var showError: Bool = false
     @Published var isLoading: Bool = true
-    
+
     private let logStorage = TransactionLogStorage.shared
-    
+
     init() {
         Task {
             await loadFromCache()
         }
     }
-    
+
     private func loadFromCache() async {
         await MainActor.run {
             isLoading = true
         }
-        
-        // Загружаем только из локального кэша
+
         if let cachedContent = logStorage.loadCache() {
             do {
                 let parsedTransactions = try logStorage.parseCSV(cachedContent)
@@ -31,28 +27,24 @@ class TransactionManager: ObservableObject {
                     isLoading = false
                 }
             } catch {
-                print("❌ Failed to parse cache: \(error.localizedDescription)")
                 await MainActor.run {
                     transactions = []
                     isLoading = false
                 }
             }
         } else {
-            print("📭 No cache found, starting with empty transactions")
             await MainActor.run {
                 transactions = []
                 isLoading = false
             }
         }
     }
-    
+
     func addTransaction(amount: String, category: String) {
-        let transaction = Transaction(amount: amount, category: category)
-        transactions.append(transaction)
-        removeDuplicates()
+        transactions.append(Transaction(amount: amount, category: category))
         saveToCache()
     }
-    
+
     private func removeDuplicates() {
         var uniqueTransactions: [Transaction] = []
         var seenIDs = Set<UUID>()
@@ -64,107 +56,17 @@ class TransactionManager: ObservableObject {
         }
         transactions = uniqueTransactions
     }
-    
+
     func deleteTransaction(_ transaction: Transaction) {
         transactions.removeAll { $0.id == transaction.id }
-        
-        // Сохраняем в локальный кэш
         saveToCache()
     }
-    
+
     private func saveToCache() {
-        // Убираем дубликаты перед сохранением
         removeDuplicates()
-        // Сохраняем только уникальные транзакции в локальный кэш в CSV формате
-        let formatted = logStorage.formatCacheCSV(transactions)
-        logStorage.saveCache(formatted)
+        logStorage.saveCache(logStorage.formatCacheCSV(transactions))
     }
-    
-    private func parseTransactionsFromLog(_ logText: String) {
-        // Парсим транзакции из текстового лога
-        // Это упрощенный парсер - можно улучшить
-        let lines = logText.components(separatedBy: .newlines)
-        var currentDate: Date?
-        let dateFormatter = DateFormatter()
-        dateFormatter.locale = Locale(identifier: "ru_RU")
-        dateFormatter.dateFormat = "dd.MM.yy"
-        
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty { continue }
-            
-            // Проверяем, является ли строка датой
-            if let date = dateFormatter.date(from: trimmed) {
-                currentDate = date
-                continue
-            }
-            
-            // Пропускаем заголовки и "бесплатный день"
-            if trimmed.contains("бесплатный день") || trimmed.contains("yyyy") || trimmed.contains("LLLL") {
-                continue
-            }
-            
-            // Парсим транзакцию: "сумма категория"
-            let components = trimmed.components(separatedBy: " ")
-            if components.count >= 2, let amount = components.first {
-                let category = components.dropFirst().joined(separator: " ")
-                // Убираем дополнения "еда" и "алко"
-                let cleanCategory = category.replacingOccurrences(of: " еда", with: "").replacingOccurrences(of: " алко", with: "")
-                
-                if let date = currentDate {
-                    let transaction = Transaction(amount: amount, category: cleanCategory, date: date)
-                    transactions.append(transaction)
-                }
-            }
-        }
-    }
-    
-    private func getAllTransactionsFormatted() -> String {
-        // Форматируем все транзакции по месяцам
-        let calendar = Calendar.current
-        let groupedByMonth = Dictionary(grouping: transactions) { transaction in
-            calendar.date(from: calendar.dateComponents([.year, .month], from: transaction.date))!
-        }
-        
-        var result = ""
-        let monthFormatter = DateFormatter()
-        monthFormatter.locale = Locale(identifier: "ru_RU")
-        monthFormatter.dateFormat = "LLLL yyyy"
-        
-        let dayFormatter = DateFormatter()
-        dayFormatter.locale = Locale(identifier: "ru_RU")
-        dayFormatter.dateFormat = "dd.MM.yy"
-        
-        for month in groupedByMonth.keys.sorted(by: >) {
-            result += "\(monthFormatter.string(from: month).capitalized)\n\n"
-            
-            let monthTransactions = groupedByMonth[month]!
-            let groupedByDay = Dictionary(grouping: monthTransactions) { transaction in
-                calendar.startOfDay(for: transaction.date)
-            }
-            
-            let today = calendar.startOfDay(for: Date())
-            
-            // Показываем только дни с транзакциями, отсортированные по убыванию
-            let daysWithTransactions = groupedByDay.keys
-                .filter { dayStart in dayStart <= today }
-                .sorted(by: >)
-            
-            for dayStart in daysWithTransactions {
-                if let dayTransactions = groupedByDay[dayStart], !dayTransactions.isEmpty {
-                    let dateString = dayFormatter.string(from: dayStart)
-                    result += "\(dateString)\n"
-                    for transaction in dayTransactions.sorted(by: { $0.date > $1.date }) {
-                        result += "\(transaction.amount) \(transaction.category)\n"
-                    }
-                    result += "\n"
-                }
-            }
-        }
-        
-        return result.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    
+
     func getTransactionsForCurrentMonth() -> [Transaction] {
         let calendar = Calendar.current
         let now = Date()
@@ -261,8 +163,6 @@ class TransactionManager: ObservableObject {
     }
     
     func getLogFileURL() -> URL? {
-        // Создаем CSV-файл в temporaryDirectory для шаринга.
-        // applicationSupportDirectory в некоторых сценариях Canvas/preview может приводить к проблемам доступа для UIActivityViewController.
         let exportDir = FileManager.default.temporaryDirectory
 
         let now = Date()
@@ -271,35 +171,25 @@ class TransactionManager: ObservableObject {
         monthFormatter.dateFormat = "LLLL"
         let monthName = monthFormatter.string(from: now)
         let year = Calendar.current.component(.year, from: now)
-        
-        // Санитизация для имени файла: заменяем пробелы/опасные символы на "_"
+
         let safeMonthName = monthName
             .replacingOccurrences(of: " ", with: "_")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "\\", with: "_")
-        
-        let exportFileName = "DailyMoneyLog_\(safeMonthName)_\(year).csv"
-        let exportURL = exportDir.appendingPathComponent(exportFileName)
-        
-        // Экспортируем текущий месяц (под шаблон "месяц_год")
-        let exportTransactions = getTransactionsForCurrentMonth()
-        let csvContent = logStorage.formatCSV(exportTransactions)
-        
-        // Сохраняем во временный файл
+
+        let exportURL = exportDir.appendingPathComponent("DailyMoneyLog_\(safeMonthName)_\(year).csv")
+        let csvContent = logStorage.formatCSV(getTransactionsForCurrentMonth())
+
         do {
             try csvContent.write(to: exportURL, atomically: true, encoding: .utf8)
-            print("✅ Export CSV created at: \(exportURL.path)")
             return exportURL
         } catch {
-            print("❌ Failed to create export CSV file: \(error)")
             return nil
         }
     }
-    
+
     func clearAllTransactions() {
         transactions = []
-        
-        // Очищаем локальный кэш
         saveToCache()
     }
     
