@@ -74,14 +74,6 @@ struct ContentView: View {
         }
     }
 
-    private func scrollToAddButton(_ proxy: ScrollViewProxy) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            withAnimation {
-                proxy.scrollTo("addButton", anchor: .bottom)
-            }
-        }
-    }
-
     private func submitForm() {
         let categoryText = comment.isEmpty ? "Другое" : comment
         let amountToSend = amount
@@ -144,7 +136,7 @@ struct ContentView: View {
     }
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .top) {
             VStack(spacing: 24) {
                 if transactionManager.isLoading && transactionManager.transactions.isEmpty {
                     Text("...")
@@ -164,109 +156,94 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                 }
 
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        VStack(spacing: 24) {
-                        ZStack(alignment: .trailing) {
-                            TextField("Сумма", text: $amount)
-                                .keyboardType(.numberPad)
-                                .font(.system(size: 28))
-                                .multilineTextAlignment(.center)
-                                .padding()
-                                .focused($isAmountFocused)
-                                .submitLabel(.next)
-                                .onSubmit {
-                                    isAmountFocused = false
-                                    isCommentFocused = true
-                                }
+                ZStack(alignment: .trailing) {
+                    TextField("Сумма", text: $amount)
+                        .keyboardType(.numberPad)
+                        .font(.system(size: 28))
+                        .multilineTextAlignment(.center)
+                        .padding()
+                        .focused($isAmountFocused)
+                        .submitLabel(.next)
+                        .onSubmit {
+                            isAmountFocused = false
+                            isCommentFocused = true
+                        }
 
-                            if !amount.isEmpty {
-                                Button(action: {
-                                    amount = ""
-                                }) {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(.gray)
-                                        .padding(.trailing, 16)
-                                }
+                    if !amount.isEmpty {
+                        Button(action: {
+                            amount = ""
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.gray)
+                                .padding(.trailing, 16)
+                        }
+                    }
+                }
+                .background(Color(.systemGray6))
+                .cornerRadius(12)
+                .padding(.horizontal, 32)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(ExpenseCategories.suggestions, id: \.self) { suggestion in
+                            Button(action: {
+                                comment = suggestion
+                            }) {
+                                Text(suggestion)
+                                    .font(.system(size: 16))
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(comment == suggestion ? Color.blue : Color(.systemGray5))
+                                    .foregroundColor(comment == suggestion ? .white : .primary)
+                                    .cornerRadius(20)
                             }
                         }
-                        .background(Color(.systemGray6))
+                    }
+                    .padding(.horizontal, 32)
+                }
+
+                ZStack(alignment: .trailing) {
+                    TextField("Категория", text: $comment)
+                        .font(.system(size: 20))
+                        .padding()
+                        .focused($isCommentFocused)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .submitLabel(.done)
+                        .onSubmit {
+                            isCommentFocused = false
+                        }
+
+                    if !comment.isEmpty {
+                        Button(action: {
+                            comment = ""
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.gray)
+                                .padding(.trailing, 16)
+                        }
+                    }
+                }
+                .background(Color(.systemGray6))
+                .cornerRadius(12)
+                .padding(.horizontal, 32)
+
+                Button(action: submitForm) {
+                    Text("Добавить")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
                         .cornerRadius(12)
-                        .padding(.horizontal, 32)
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 12) {
-                                ForEach(ExpenseCategories.suggestions, id: \.self) { suggestion in
-                                    Button(action: {
-                                        comment = suggestion
-                                    }) {
-                                        Text(suggestion)
-                                            .font(.system(size: 16))
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 8)
-                                            .background(comment == suggestion ? Color.blue : Color(.systemGray5))
-                                            .foregroundColor(comment == suggestion ? .white : .primary)
-                                            .cornerRadius(20)
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, 32)
-                        }
-
-                        ZStack(alignment: .trailing) {
-                            TextField("Категория", text: $comment)
-                                .font(.system(size: 20))
-                                .padding()
-                                .focused($isCommentFocused)
-                                .submitLabel(.done)
-                                .onSubmit {
-                                    isCommentFocused = false
-                                }
-
-                            if !comment.isEmpty {
-                                Button(action: {
-                                    comment = ""
-                                }) {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(.gray)
-                                        .padding(.trailing, 16)
-                                }
-                            }
-                        }
-                        .background(Color(.systemGray6))
-                        .cornerRadius(12)
-                        .padding(.horizontal, 32)
-
-                        Button(action: submitForm) {
-                            Text("Добавить")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.blue)
-                                .cornerRadius(12)
-                        }
-                        .padding(.horizontal, 32)
-                        .disabled(amount.isEmpty)
-                        .id("addButton")
-                    }
-                    .padding(.bottom, 20)
                 }
-                .scrollDismissesKeyboard(.never)
-                .scrollBounceBehavior(.basedOnSize)
-                .onChange(of: isAmountFocused) { _, focused in
-                    if focused {
-                        scrollToAddButton(proxy)
-                    }
-                }
-                .onChange(of: isCommentFocused) { _, focused in
-                    if focused {
-                        scrollToAddButton(proxy)
-                    }
-                }
-                }
+                .padding(.horizontal, 32)
+                .disabled(amount.isEmpty)
+
+                Spacer(minLength: 0)
             }
             .padding(.top, 56)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
             if !toasts.isEmpty {
                     VStack(spacing: 8) {
