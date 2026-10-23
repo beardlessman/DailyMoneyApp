@@ -151,32 +151,18 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                 }
 
-                ZStack(alignment: .trailing) {
-                    TextField("Сумма", text: $amount)
-                        .keyboardType(.numberPad)
-                        .font(.system(size: 28))
-                        .multilineTextAlignment(.center)
-                        .padding()
-                        .focused($isAmountFocused)
-                        .submitLabel(.next)
-                        .onSubmit {
-                            isAmountFocused = false
-                            isCommentFocused = true
-                        }
-
-                    if !amount.isEmpty {
-                        Button(action: {
-                            amount = ""
-                        }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.gray)
-                                .padding(.trailing, 16)
-                        }
-                    }
+                ClearableTextField(
+                    title: "Сумма",
+                    text: $amount,
+                    font: .system(size: 28),
+                    keyboardType: .numberPad,
+                    textAlignment: .center,
+                    submitLabel: .next,
+                    focus: $isAmountFocused
+                ) {
+                    isAmountFocused = false
+                    isCommentFocused = true
                 }
-                .background(Color(.systemGray6))
-                .cornerRadius(12)
-                .padding(.horizontal, 32)
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
@@ -197,31 +183,15 @@ struct ContentView: View {
                     .padding(.horizontal, 32)
                 }
 
-                ZStack(alignment: .trailing) {
-                    TextField("Категория", text: $comment)
-                        .font(.system(size: 20))
-                        .padding()
-                        .focused($isCommentFocused)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .submitLabel(.done)
-                        .onSubmit {
-                            isCommentFocused = false
-                        }
-
-                    if !comment.isEmpty {
-                        Button(action: {
-                            comment = ""
-                        }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.gray)
-                                .padding(.trailing, 16)
-                        }
-                    }
+                ClearableTextField(
+                    title: "Категория",
+                    text: $comment,
+                    submitLabel: .done,
+                    disableAutocorrection: true,
+                    focus: $isCommentFocused
+                ) {
+                    isCommentFocused = false
                 }
-                .background(Color(.systemGray6))
-                .cornerRadius(12)
-                .padding(.horizontal, 32)
 
                 Button(action: submitForm) {
                     Text("Добавить")
