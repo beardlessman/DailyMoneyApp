@@ -14,6 +14,31 @@
 - **Интеграция с Google Forms** — при настройке URL каждая трата дополнительно отправляется в форму.
 - **Локальное хранение** — транзакции сохраняются на устройстве в CSV-кэше.
 
+## Структура проекта
+
+Файлы разложены по фичам, внутри фичи — по роли (`Views` / `Managers` / `Services` / `Models` / `Storage`).
+
+```
+DailyMoneyApp/
+  App/                         # точка входа и навигация
+  Features/
+    AddExpense/                # форма добавления траты
+      Views/
+      Services/                # Google Forms, категории
+    Log/                       # журнал и его настройки
+      Views/
+    Budget/                    # месячный/дневной бюджет
+      Views/
+      Managers/
+  Shared/
+    Transactions/              # общая доменная модель транзакций
+      Models/
+      Managers/
+      Storage/
+    UI/                        # переиспользуемые UI-обёртки
+  Assets.xcassets/
+```
+
 ## Технологии
 
 - SwiftUI
