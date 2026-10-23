@@ -15,7 +15,6 @@ struct MainPagerView: View {
                     .tag(NavigationManager.formTab)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
-            .animation(.easeInOut(duration: 0.3), value: navigationManager.selectedTab)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar { mainToolbar }

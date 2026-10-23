@@ -11,18 +11,14 @@ class NavigationManager: ObservableObject {
     @Published var showLogSettings = false
 
     func switchToLog() {
-        withAnimation(.easeInOut(duration: 0.3)) {
-            showBudgetSettings = false
-            showLogSettings = false
-            selectedTab = Self.logTab
-        }
+        showBudgetSettings = false
+        showLogSettings = false
+        selectedTab = Self.logTab
     }
 
     func switchToAdd() {
-        withAnimation(.easeInOut(duration: 0.3)) {
-            showBudgetSettings = false
-            showLogSettings = false
-            selectedTab = Self.formTab
-        }
+        showBudgetSettings = false
+        showLogSettings = false
+        selectedTab = Self.formTab
     }
 }
