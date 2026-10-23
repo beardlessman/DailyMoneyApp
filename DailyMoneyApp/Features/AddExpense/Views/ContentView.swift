@@ -15,7 +15,6 @@ struct ContentView: View {
     @FocusState private var isAmountFocused: Bool
     @FocusState private var isCommentFocused: Bool
     @State private var toasts: [Toast] = []
-    @State private var focusTaskGeneration = 0
 
     @AppStorage("google_forms_url") private var googleFormsURL: String = ""
 
@@ -49,7 +48,6 @@ struct ContentView: View {
     }
 
     private func clearFocus() {
-        focusTaskGeneration += 1
         isAmountFocused = false
         isCommentFocused = false
         UIApplication.shared.sendAction(
@@ -61,14 +59,11 @@ struct ContentView: View {
     }
 
     private func scheduleFocusIfOnForm() {
-        guard navigationManager.selectedTab == NavigationManager.formTab, !navigationManager.showBudgetSettings else { return }
-
-        focusTaskGeneration += 1
-        let generation = focusTaskGeneration
+        guard navigationManager.selectedTab == NavigationManager.formTab,
+              !navigationManager.showBudgetSettings else { return }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            guard generation == focusTaskGeneration,
-                  navigationManager.selectedTab == NavigationManager.formTab,
+            guard navigationManager.selectedTab == NavigationManager.formTab,
                   !navigationManager.showBudgetSettings else { return }
             isAmountFocused = true
         }
